@@ -9,21 +9,21 @@ A self-contained, browser-based spending dashboard for [YNAB](https://www.ynab.c
 ## Try it
 
 1. Create a YNAB **personal access token** at <https://app.ynab.com/settings/developer> → *New Token*.
-2. Open `spending-chart.html` in a browser and paste the token when prompted.
+2. Open the dashboard in a browser and paste the token when prompted.
 
 That's it. The token is saved in your browser's `localStorage` so you only paste it once. It's sent only to `api.ynab.com` — there is no other server.
 
 ### Run locally
 
 ```bash
-python -m http.server 3131
-# or
 python serve.py
+# or
+python -m http.server 3131 --directory public
 ```
 
-Then open <http://localhost:3131/spending-chart.html>.
+Then open <http://localhost:3131/>.
 
-> The file works when opened directly via `file://` too — but a local server is recommended so the browser caches behave normally.
+> `public/index.html` works when opened directly via `file://` too — but a local server is recommended so the browser caches behave normally.
 
 ---
 
@@ -62,13 +62,20 @@ Then open <http://localhost:3131/spending-chart.html>.
 - **Vanilla HTML + JavaScript** — no build step, no npm, no framework
 - **[Chart.js](https://www.chartjs.org/)** loaded from CDN — single dependency
 - **[html2canvas](https://html2canvas.hertzen.com/) + [jsPDF](https://github.com/parallax/jsPDF)** for PDF export
-- The whole dashboard is **one HTML file** (`spending-chart.html`) — easy to read, easy to fork
+- The whole dashboard is **one HTML file** (`public/index.html`) — easy to read, easy to fork
 
 ---
 
-## Hosted version
+## Deploying your own copy (Cloudflare Workers)
 
-A hosted copy is available at *(TBD — Cloudflare Pages link goes here once deployed)*. It's the same file served over HTTPS — your token still stays on your device.
+This repo includes a [`wrangler.jsonc`](./wrangler.jsonc) so you can deploy to Cloudflare's free tier in two clicks:
+
+1. In the Cloudflare dashboard: **Workers & Pages** → **Create application** → **Connect to Git** → pick your fork.
+2. Leave **Build command** blank and **Deploy command** as the default `npx wrangler deploy`. Cloudflare reads `wrangler.jsonc` and uploads `./public` as static assets.
+
+Your dashboard will be live at `<project>.<your-subdomain>.workers.dev`.
+
+A hosted copy is available at *(TBD — link goes here once deployed)*.
 
 ---
 

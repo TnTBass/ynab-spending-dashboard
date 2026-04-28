@@ -1,0 +1,15 @@
+/**
+ * Cloudflare Workers Static Assets config.
+ * https://developers.cloudflare.com/workers/static-assets/
+ *
+ * This site has no Worker code — only static files in ./public.
+ * Cloudflare serves them directly from its global CDN.
+ */
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "ynab-spending-dashboard",
+  "compatibility_date": "2026-04-28",
+  "assets": {
+    "directory": "./public"
+  }
+}

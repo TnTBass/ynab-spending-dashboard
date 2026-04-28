@@ -1,6 +1,6 @@
 """
-Local dev server for spending-chart.html — forces no-cache on every response
-so the browser always fetches the latest version of the file.
+Local dev server — serves ./public with no-cache headers so the browser
+always fetches the latest version of the file.
 """
 import os
 from http.server import HTTPServer, SimpleHTTPRequestHandler
@@ -13,10 +13,9 @@ class NoCacheHandler(SimpleHTTPRequestHandler):
         super().end_headers()
 
     def log_message(self, fmt, *args):
-        # Suppress noisy request logging; only show start-up line
         pass
 
-os.chdir(os.path.dirname(os.path.abspath(__file__)))
-print('Serving YNAB Dashboard at http://localhost:3131/spending-chart.html')
+os.chdir(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'public'))
+print('Serving YNAB Dashboard at http://localhost:3131/')
 print('Press Ctrl+C to stop.')
 HTTPServer(('', 3131), NoCacheHandler).serve_forever()
