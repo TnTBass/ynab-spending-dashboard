@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Privacy Policy — YNAB Spending Dashboard</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='3' y='18' width='5' height='11' fill='%239f7aea' rx='1.2'/%3E%3Crect x='10' y='12' width='5' height='17' fill='%2348bb78' rx='1.2'/%3E%3Crect x='17' y='6' width='5' height='23' fill='%234299e1' rx='1.2'/%3E%3Crect x='24' y='14' width='5' height='15' fill='%23ed8936' rx='1.2'/%3E%3C/svg%3E">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; background: #f7fafc; color: #1a202c; line-height: 1.6; padding: 40px 20px; }
+    .container { max-width: 760px; margin: 0 auto; background: white; border-radius: 16px; padding: 40px 48px; box-shadow: 0 4px 24px rgba(0,0,0,0.06); }
+    h1 { font-size: 1.6rem; font-weight: 700; margin-bottom: 4px; }
+    .meta { color: #718096; font-size: 0.85rem; margin-bottom: 28px; }
+    h2 { font-size: 1.1rem; font-weight: 600; margin: 28px 0 8px; color: #2d3748; }
+    p, li { color: #2d3748; margin-bottom: 8px; font-size: 0.95rem; }
+    ul { padding-left: 22px; margin-bottom: 12px; }
+    code { background: #edf2f7; padding: 1px 6px; border-radius: 3px; font-size: 0.88em; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    a { color: #3182ce; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .top-link { display: inline-block; margin-bottom: 18px; font-size: 0.85rem; }
+    .summary { background: #ebf8ff; border-left: 4px solid #4299e1; padding: 14px 18px; border-radius: 6px; margin: 12px 0 24px; font-size: 0.95rem; }
+    .summary strong { color: #2c5282; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <a href="/" class="top-link">← Back to dashboard</a>
+    <h1>Privacy Policy</h1>
+    <p class="meta">YNAB Spending Dashboard · Last updated 2026-04-28</p>
+
+    <div class="summary">
+      <strong>Short version:</strong> The dashboard sends your YNAB data straight from your browser to YNAB and back. The dashboard server never sees your budget, your transactions, or your YNAB credentials. The only thing routed through the server is the OAuth token exchange itself, and even that is forwarded without inspection or logging.
+    </div>
+
+    <h2>What this site is</h2>
+    <p>The YNAB Spending Dashboard (<a href="https://ynab-dashboard.org">ynab-dashboard.org</a>) is an open-source, browser-based visualization tool for personal finance data stored in <a href="https://www.ynab.com/" target="_blank" rel="noopener">You Need A Budget (YNAB)</a>. The full source code is available at <a href="https://github.com/TnTBass/ynab-spending-dashboard" target="_blank" rel="noopener">github.com/TnTBass/ynab-spending-dashboard</a>.</p>
+
+    <h2>Data we never collect</h2>
+    <ul>
+      <li>Your YNAB email, password, or login credentials. The dashboard never sees these. You authorize via YNAB's own OAuth screen.</li>
+      <li>Your YNAB budget data, transactions, categories, account balances, or any other financial information. These are fetched from <code>api.ynab.com</code> directly by your browser and stay in your browser.</li>
+      <li>Cookies, analytics, advertising identifiers, fingerprints, or any third-party tracking.</li>
+      <li>Your IP address, beyond the standard request logs that any web host (Cloudflare in this case) keeps for short periods to operate and protect the service.</li>
+    </ul>
+
+    <h2>What is stored, and where</h2>
+    <ul>
+      <li><strong>OAuth access and refresh tokens</strong> are stored in your browser's <code>localStorage</code> after you sign in with YNAB. These let the dashboard call the YNAB API on your behalf without re-prompting. They live only in your browser and are never sent to the dashboard server, except via the token-refresh proxy described below.</li>
+      <li><strong>Your selected budget ID and a small client-side cache of YNAB API responses</strong> are also stored in your browser, in <code>localStorage</code> and <code>sessionStorage</code>. This is a performance optimization, not a tracking mechanism.</li>
+      <li>You can clear all of this at any time by clicking <em>Sign out</em> in the dashboard, by clearing your browser's site data for <code>ynab-dashboard.org</code>, or by revoking the application from your <a href="https://app.ynab.com/settings/oauth" target="_blank" rel="noopener">YNAB OAuth settings</a>.</li>
+    </ul>
+
+    <h2>What the server does</h2>
+    <p>The dashboard runs on Cloudflare Workers. The server has exactly three responsibilities:</p>
+    <ol style="padding-left: 22px; margin-bottom: 12px;">
+      <li><strong>Serving the static HTML, CSS, and JavaScript</strong> that make up the dashboard. These are public files identical to what you see in the GitHub repo.</li>
+      <li><strong>Returning the public OAuth client ID</strong> to the dashboard JavaScript on first load (<code>GET /api/config</code>). This value is not sensitive.</li>
+      <li><strong>Proxying two OAuth requests</strong> to YNAB:
+        <ul style="margin-top: 6px;">
+          <li><code>POST /api/oauth/exchange</code> &mdash; trades an authorization code for an access token plus a refresh token, immediately after you sign in</li>
+          <li><code>POST /api/oauth/refresh</code> &mdash; trades an expiring access token for a fresh one</li>
+        </ul>
+        Both are forwarded to YNAB's <code>/oauth/token</code> endpoint with the OAuth client secret attached. The proxy exists only because YNAB requires the client secret on the token exchange, and a browser cannot safely hold one. The server forwards the token responses verbatim back to your browser. <strong>The server does not log, store, inspect, or persist token bodies or YNAB API responses.</strong></li>
+    </ol>
+
+    <h2>Network requests your browser makes while using the dashboard</h2>
+    <ul>
+      <li><strong>To <code>ynab-dashboard.org</code></strong> &mdash; loads the dashboard HTML/JS, fetches the OAuth client ID, and proxies the two OAuth token requests.</li>
+      <li><strong>To <code>app.ynab.com</code></strong> &mdash; the OAuth authorize redirect when you click "Sign in with YNAB".</li>
+      <li><strong>To <code>api.ynab.com</code></strong> &mdash; every call to read your budget, transactions, and categories. Sent directly from your browser using your access token.</li>
+      <li><strong>To <code>cdn.jsdelivr.net</code> and <code>cdnjs.cloudflare.com</code></strong> &mdash; loads three open-source JavaScript libraries from public CDNs: <a href="https://www.chartjs.org/" target="_blank" rel="noopener">Chart.js</a> for the charts, plus <a href="https://html2canvas.hertzen.com/" target="_blank" rel="noopener">html2canvas</a> and <a href="https://github.com/parallax/jsPDF" target="_blank" rel="noopener">jsPDF</a> for the PDF export feature. These CDNs may receive standard request metadata (your IP address, user-agent) when serving these files.</li>
+    </ul>
+
+    <h2>Hosting and infrastructure</h2>
+    <p>The dashboard is hosted on <a href="https://www.cloudflare.com/" target="_blank" rel="noopener">Cloudflare Workers</a>. Cloudflare keeps standard request logs (timestamp, IP address, user-agent, response status) as part of operating the service. These logs do not contain OAuth tokens, your YNAB data, or any other request bodies. Cloudflare's own privacy practices are described at <a href="https://www.cloudflare.com/privacypolicy/" target="_blank" rel="noopener">cloudflare.com/privacypolicy</a>.</p>
+
+    <h2>YNAB's role</h2>
+    <p>This dashboard uses the YNAB API. When you authorize the dashboard, you are granting it <strong>read-only</strong> access to your budget. This means the dashboard cannot create, modify, or delete anything in your YNAB account. YNAB enforces this restriction on their end. Your relationship with YNAB and the data they hold about you is governed by <a href="https://www.ynab.com/privacy" target="_blank" rel="noopener">YNAB's privacy policy</a>.</p>
+
+    <h2>Data we do not share</h2>
+    <p>Because the dashboard server does not see, store, or log your budget data or tokens, there is nothing for the operator of this dashboard to share with anyone. No analytics, no advertising partners, no third-party data sales, no aggregated reporting on user behavior.</p>
+
+    <h2>Children</h2>
+    <p>This service is not directed to children under 13 and we do not knowingly collect any personal information from them. (We do not knowingly collect personal information from anyone &mdash; see above &mdash; this clause is included for the sake of completeness.)</p>
+
+    <h2>Changes to this policy</h2>
+    <p>If this policy changes, the "Last updated" date at the top of this page will be revised. Significant changes will also be noted in the project's GitHub commit history.</p>
+
+    <h2>Contact</h2>
+    <p>Questions, suggestions, or concerns can be filed as issues on the GitHub repository: <a href="https://github.com/TnTBass/ynab-spending-dashboard/issues" target="_blank" rel="noopener">github.com/TnTBass/ynab-spending-dashboard/issues</a>.</p>
+  </div>
+</body>
+</html>

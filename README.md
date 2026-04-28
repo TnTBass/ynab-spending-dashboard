@@ -63,13 +63,13 @@ python serve.py
 This runs the actual Cloudflare Worker on your machine, including the OAuth proxy.
 
 1. Register a YNAB OAuth application at <https://app.ynab.com/settings/developer> → **New Application**:
-   - Application URL: `http://localhost:8787/`
-   - Redirect URI: `http://localhost:8787/`
+   - Application URL: `http://localhost:3131/`
+   - Redirect URI: `http://localhost:3131/oauth/callback`
 2. Copy `.dev.vars.example` to `.dev.vars` and fill in `YNAB_CLIENT_ID` + `YNAB_CLIENT_SECRET` from the OAuth app.
 3. Run:
    ```bash
    npx wrangler dev
-   # → http://localhost:8787/
+   # → http://localhost:3131/
    ```
 
 `.dev.vars` is gitignored. Both `npx` and `wrangler` are downloaded on demand if you don't have them.
@@ -80,7 +80,9 @@ This runs the actual Cloudflare Worker on your machine, including the OAuth prox
 
 This repo deploys as a Cloudflare Worker that serves both static assets and a small OAuth proxy. The free tier is plenty for personal use.
 
-1. Register a YNAB OAuth application at <https://app.ynab.com/settings/developer> → **New Application** with the redirect URI matching wherever you'll deploy (e.g. `https://your-app.your-account.workers.dev/` or your custom domain).
+1. Register a YNAB OAuth application at <https://app.ynab.com/settings/developer> → **New Application** with a redirect URI matching wherever you'll deploy. The path must be `/oauth/callback`. Examples:
+   - `https://your-app.your-account.workers.dev/oauth/callback`
+   - `https://your-custom-domain.com/oauth/callback`
 2. In the Cloudflare dashboard: **Workers & Pages** → **Create application** → **Connect to Git** → pick your fork.
 3. Leave **Build command** blank. Leave **Deploy command** as the default `npx wrangler deploy`.
 4. After the first deploy, go to the Worker's **Settings → Variables and Secrets** and add:
@@ -97,6 +99,12 @@ To wire up a custom domain, add it under the Worker's **Settings → Domains & R
 - **Frontend:** Vanilla HTML + JavaScript, no build step. [Chart.js](https://www.chartjs.org/) and [html2canvas](https://html2canvas.hertzen.com/) + [jsPDF](https://github.com/parallax/jsPDF) loaded from CDN. The entire dashboard is `public/index.html`.
 - **Backend:** A ~150-line Cloudflare Worker (`src/worker.js`) that proxies two OAuth endpoints. No dependencies.
 - **OAuth:** Authorization Code flow with PKCE (RFC 7636). Refresh tokens are used to keep sessions alive without re-prompting.
+
+---
+
+## Privacy
+
+Full policy at <https://ynab-dashboard.org/privacy.html> ([source](./public/privacy.html)). Short version: the dashboard server never sees your YNAB data or your tokens. The browser talks directly to `api.ynab.com` for everything except the OAuth token exchange itself, which is forwarded by the server without inspection or logging.
 
 ---
 

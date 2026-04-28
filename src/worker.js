@@ -23,8 +23,8 @@ const YNAB_TOKEN_URL = 'https://app.ynab.com/oauth/token';
 
 const ALLOWED_ORIGINS = new Set([
   'https://ynab-dashboard.org',
-  'http://localhost:8787',
-  'http://127.0.0.1:8787',
+  'http://localhost:3131',
+  'http://127.0.0.1:3131',
 ]);
 
 export default {
@@ -49,6 +49,15 @@ export default {
 
     if (url.pathname === '/api/oauth/refresh' && request.method === 'POST') {
       return handleRefresh(request, env);
+    }
+
+    // OAuth redirect lands on /oauth/callback. Serve the SPA's index.html so
+    // the in-page handler can read ?code= from the URL and finish the flow.
+    // The browser still sees /oauth/callback in the URL bar; the SPA cleans
+    // it up via history.replaceState after the token exchange succeeds.
+    if (url.pathname === '/oauth/callback') {
+      const indexUrl = new URL(url.origin);
+      return env.ASSETS.fetch(new Request(indexUrl, request));
     }
 
     // Anything else falls through to static assets

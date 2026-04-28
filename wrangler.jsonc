@@ -20,5 +20,8 @@
   "assets": {
     "directory": "./public",
     "binding":   "ASSETS"
+  },
+  "dev": {
+    "port": 3131
   }
 }

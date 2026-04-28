@@ -10,9 +10,10 @@ For full OAuth-capable local dev, use Wrangler instead:
 
     npx wrangler dev
 
-That runs the actual Worker locally on http://localhost:8787, including the
+That runs the actual Worker locally on http://localhost:3131, including the
 OAuth proxy routes. Make sure you have a .dev.vars file with YNAB_CLIENT_ID
-and YNAB_CLIENT_SECRET (see .dev.vars.example).
+and YNAB_CLIENT_SECRET (see .dev.vars.example). The wrangler dev port matches
+the YNAB OAuth app's registered redirect URI of localhost:3131/oauth/callback.
 
 This script remains useful for: previewing visual changes, working offline,
 or browsing the dashboard with already-cached tokens.

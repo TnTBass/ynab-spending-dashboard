@@ -171,6 +171,9 @@
       <p style="font-size:0.75rem;color:#a0aec0;margin-top:16px;text-align:center">
         Tokens are stored in this browser's <code>localStorage</code> so you don't have to sign in every visit. Use <em>Sign out</em> to remove them, or revoke access at any time from your <a href="https://app.ynab.com/settings/oauth" target="_blank" rel="noopener" style="color:inherit">YNAB OAuth settings</a>.
       </p>
+      <p style="font-size:0.75rem;color:#a0aec0;margin-top:8px;text-align:center">
+        <a href="/privacy.html" style="color:inherit">Privacy policy</a> · <a href="https://github.com/TnTBass/ynab-spending-dashboard" target="_blank" rel="noopener" style="color:inherit">Source on GitHub</a>
+      </p>
     </div>
   </div>
 
@@ -406,8 +409,11 @@
     // proxy at /api/oauth/{exchange,refresh} so the client_secret never
     // touches the browser. See src/worker.js.
 
+    // Hardcoded path so it matches whatever's registered with YNAB regardless
+    // of which page the user clicks "Sign in" from. Must exactly match a
+    // redirect URI on the YNAB OAuth app.
     function getRedirectUri() {
-      return window.location.origin + window.location.pathname;
+      return window.location.origin + '/oauth/callback';
     }
 
     async function loadConfig() {
@@ -539,8 +545,8 @@
 
       if (!code && !errCode) return false;
 
-      // Strip code/error from URL bar regardless of outcome
-      history.replaceState(null, '', window.location.pathname);
+      // Strip code/error from URL bar AND collapse /oauth/callback → /
+      history.replaceState(null, '', '/');
 
       if (errCode) {
         showScreen('setupScreen');
