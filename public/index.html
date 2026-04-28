@@ -36,8 +36,6 @@
     .btn-primary { width: 100%; padding: 11px; background: #4299e1; color: white; border: none; border-radius: 8px; font-size: 0.95rem; font-weight: 600; cursor: pointer; transition: background 0.15s; }
     .btn-primary:hover { background: #3182ce; }
     .btn-primary:disabled { background: #bee3f8; cursor: not-allowed; }
-    .token-input { width: 100%; padding: 11px 12px; border: 1px solid #cbd5e0; border-radius: 8px; font-size: 0.9rem; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; box-sizing: border-box; margin-bottom: 12px; }
-    .token-input:focus { outline: none; border-color: #4299e1; box-shadow: 0 0 0 3px rgba(66,153,225,0.15); }
     .setup-help { font-size: 0.85rem; color: #4a5568; margin-bottom: 14px; line-height: 1.5; }
     .setup-help a { color: #3182ce; text-decoration: none; font-weight: 500; }
     .setup-help a:hover { text-decoration: underline; }
@@ -162,21 +160,19 @@
       <h1>YNAB Spending Dashboard</h1>
       <p class="lead">Visualize your spending with month-by-month breakdowns, group trends, and transaction drill-downs.</p>
       <div class="readonly-note">
-        🔒 <strong>Your data stays on your device.</strong> Your token is sent only to <code>api.ynab.com</code>, never to any other server. This page has no backend.
+        🔒 <strong>Read-only access.</strong> This app requests <code>read-only</code> scope. YNAB enforces this on their end, so the dashboard cannot create, modify, or delete anything in your budget.
       </div>
       <p class="setup-help">
-        Paste a YNAB <strong>personal access token</strong> below. You can create one at
-        <a href="https://app.ynab.com/settings/developer" target="_blank" rel="noopener">app.ynab.com/settings/developer</a>
-        → <em>New Token</em>. Tokens grant full access to your budget — only paste tokens you've created yourself.
+        Sign in with your YNAB account to get started. You'll be redirected to YNAB to authorize, then brought right back. The dashboard never sees your YNAB password.
       </p>
-      <form id="tokenForm" onsubmit="saveToken(event)">
-        <input class="token-input" id="tokenInput" type="password" autocomplete="off" spellcheck="false" placeholder="Paste your YNAB personal access token" />
-        <button class="btn-primary" id="connectBtn" type="submit">Connect →</button>
-      </form>
+      <button class="btn-primary" id="connectBtn" type="button" onclick="startOAuthFlow()">Sign in with YNAB →</button>
       <div id="setupError" style="margin-top:14px;padding:10px 12px;border-radius:8px;font-size:0.85rem;display:none"></div>
       <div id="setupStatus" style="margin-top:14px;font-size:0.82rem;color:#718096;text-align:center;display:none"></div>
       <p style="font-size:0.75rem;color:#a0aec0;margin-top:16px;text-align:center">
-        Token is saved in this browser's <code>localStorage</code> so you don't have to paste it again. Use <em>Sign out</em> to remove it.
+        Tokens are stored in this browser's <code>localStorage</code> so you don't have to sign in every visit. Use <em>Sign out</em> to remove them, or revoke access at any time from your <a href="https://app.ynab.com/settings/oauth" target="_blank" rel="noopener" style="color:inherit">YNAB OAuth settings</a>.
+      </p>
+      <p style="font-size:0.75rem;color:#a0aec0;margin-top:8px;text-align:center">
+        <a href="/privacy.html" style="color:inherit">Privacy policy</a> · <a href="https://github.com/TnTBass/ynab-spending-dashboard" target="_blank" rel="noopener" style="color:inherit">Source on GitHub</a>
       </p>
     </div>
   </div>
@@ -195,7 +191,7 @@
       <h1>Choose a budget</h1>
       <p class="lead" style="margin-bottom:20px">Select which budget to visualize.</p>
       <div class="budget-list" id="budgetList"></div>
-      <button class="btn-secondary" style="width:100%;margin-top:4px" onclick="showSetup()">← Use a different token</button>
+      <button class="btn-secondary" style="width:100%;margin-top:4px" onclick="showSetup()">← Sign in with a different account</button>
     </div>
   </div>
 
@@ -354,8 +350,18 @@
     });
 
     // ── Constants ────────────────────────────────────────────
-    const YNAB_BASE   = 'https://api.ynab.com/v1';
-    const TOKEN_KEY   = 'ynab_pat';
+    const YNAB_BASE         = 'https://api.ynab.com/v1';
+    const YNAB_AUTH_URL     = 'https://app.ynab.com/oauth/authorize';
+    const SCOPE             = 'read-only';
+    // Token storage keys (localStorage = persists across sessions)
+    const ACCESS_TOKEN_KEY  = 'ynab_access_token';
+    const REFRESH_TOKEN_KEY = 'ynab_refresh_token';
+    const EXPIRES_AT_KEY    = 'ynab_token_expires_at';
+    // PKCE values are short-lived — sessionStorage is cleared on tab close
+    const PKCE_VERIFIER_KEY = 'ynab_pkce_verifier';
+    const PKCE_STATE_KEY    = 'ynab_pkce_state';
+    // Loaded from /api/config at sign-in time, cached for the session
+    let   YNAB_CLIENT_ID    = '';
     const SKIP_GROUPS = new Set(['Internal Master Category', 'Credit Card Payments', 'Hidden Categories']);
     const COLOR_PALETTE = ['#9f7aea','#48bb78','#ed8936','#4299e1','#fc8181','#38b2ac','#f687b3','#ecc94b','#667eea','#f6ad55'];
     const groupColorMap = {};
@@ -397,41 +403,200 @@
     // ── App state ────────────────────────────────────────────
     let apiKey = '', budgets = [], activeBudget = null;
 
-    // ── Token (PAT) ──────────────────────────────────────────
-    function findToken() {
-      try { return localStorage.getItem(TOKEN_KEY) || ''; } catch { return ''; }
+    // ── OAuth (Authorization Code + PKCE + refresh tokens) ───
+    // Architecture: PKCE generated in the browser, /oauth/authorize redirect
+    // happens client-side, but the /oauth/token POST goes through our Worker
+    // proxy at /api/oauth/{exchange,refresh} so the client_secret never
+    // touches the browser. See src/worker.js.
+
+    // Hardcoded path so it matches whatever's registered with YNAB regardless
+    // of which page the user clicks "Sign in" from. Must exactly match a
+    // redirect URI on the YNAB OAuth app.
+    function getRedirectUri() {
+      return window.location.origin + '/oauth/callback';
     }
 
-    function clearToken() {
-      try { localStorage.removeItem(TOKEN_KEY); } catch {}
-      apiKey = '';
+    async function loadConfig() {
+      if (YNAB_CLIENT_ID) return YNAB_CLIENT_ID;
+      const res = await fetch('/api/config');
+      if (!res.ok) throw new Error('Could not load OAuth config (HTTP ' + res.status + ')');
+      const cfg = await res.json();
+      if (!cfg.client_id) throw new Error('Server did not return a client_id');
+      YNAB_CLIENT_ID = cfg.client_id;
+      return YNAB_CLIENT_ID;
     }
 
-    async function saveToken(event) {
-      if (event) event.preventDefault();
-      clearSetupFeedback();
-      const input = document.getElementById('tokenInput');
-      const token = (input?.value || '').trim();
-      if (!token) { showSetupError('Please paste a YNAB personal access token.'); return; }
-      const btn = document.getElementById('connectBtn');
-      if (btn) { btn.textContent = 'Connecting…'; btn.disabled = true; }
-      showSetupStatus('Verifying token…');
+    function readTokens() {
       try {
-        try { localStorage.setItem(TOKEN_KEY, token); } catch {}
-        await connectWithToken(token);
-        if (input) input.value = '';
+        return {
+          access:    localStorage.getItem(ACCESS_TOKEN_KEY)  || '',
+          refresh:   localStorage.getItem(REFRESH_TOKEN_KEY) || '',
+          expiresAt: parseInt(localStorage.getItem(EXPIRES_AT_KEY) || '0', 10),
+        };
+      } catch { return { access: '', refresh: '', expiresAt: 0 }; }
+    }
+
+    function storeTokens({ access_token, refresh_token, expires_in }) {
+      try {
+        if (access_token)  localStorage.setItem(ACCESS_TOKEN_KEY,  access_token);
+        if (refresh_token) localStorage.setItem(REFRESH_TOKEN_KEY, refresh_token);
+        if (expires_in)    localStorage.setItem(EXPIRES_AT_KEY,    String(Date.now() + expires_in * 1000));
       } catch (err) {
-        clearToken();
-        showSetupError('Could not connect: ' + err.message);
-      } finally {
-        if (btn) { btn.textContent = 'Connect →'; btn.disabled = false; }
+        console.error('Could not persist OAuth tokens:', err);
       }
     }
 
-    function showExpired() {
-      clearToken();
+    function clearTokens() {
+      try {
+        localStorage.removeItem(ACCESS_TOKEN_KEY);
+        localStorage.removeItem(REFRESH_TOKEN_KEY);
+        localStorage.removeItem(EXPIRES_AT_KEY);
+      } catch {}
+      apiKey = '';
+    }
+
+    // Returns a non-empty access token, refreshing if needed.
+    // Returns '' if the user is not signed in (no refresh token either).
+    async function getValidAccessToken({ quiet = false } = {}) {
+      const { access, refresh, expiresAt } = readTokens();
+      // Refresh proactively when within 60s of expiry
+      if (access && expiresAt - Date.now() > 60_000) return access;
+      if (!refresh) return '';
+      return refreshAccessToken({ quiet });
+    }
+
+    async function refreshAccessToken({ quiet = false } = {}) {
+      const { refresh } = readTokens();
+      if (!refresh) return '';
+      let res, tokens;
+      try {
+        res = await fetch('/api/oauth/refresh', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({ refresh_token: refresh }),
+        });
+        tokens = await res.json().catch(() => ({}));
+      } catch {
+        return ''; // network error — caller decides what to do
+      }
+      if (!res.ok || !tokens.access_token) {
+        clearTokens();
+        if (!quiet) showExpired();
+        return '';
+      }
+      storeTokens(tokens);
+      return tokens.access_token;
+    }
+
+    // ── PKCE helpers ─────────────────────────────────────────
+    function base64url(bytes) {
+      return btoa(String.fromCharCode(...new Uint8Array(bytes)))
+        .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    }
+    function randomString(byteLen = 64) {
+      const arr = new Uint8Array(byteLen);
+      crypto.getRandomValues(arr);
+      return base64url(arr);
+    }
+    async function sha256(text) {
+      const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+      return base64url(buf);
+    }
+
+    // ── OAuth flow ───────────────────────────────────────────
+    async function startOAuthFlow() {
+      clearSetupFeedback();
+      const btn = document.getElementById('connectBtn');
+      if (btn) { btn.textContent = 'Redirecting to YNAB…'; btn.disabled = true; }
+      showSetupStatus('Step 1/3 — preparing authorization request…');
+      try {
+        const clientId = await loadConfig();
+
+        const verifier  = randomString(64);
+        const challenge = await sha256(verifier);
+        const state     = randomString(16);
+
+        sessionStorage.setItem(PKCE_VERIFIER_KEY, verifier);
+        sessionStorage.setItem(PKCE_STATE_KEY,    state);
+
+        const params = new URLSearchParams({
+          client_id:             clientId,
+          redirect_uri:          getRedirectUri(),
+          response_type:         'code',
+          scope:                 SCOPE,
+          state,
+          code_challenge:        challenge,
+          code_challenge_method: 'S256',
+        });
+        showSetupStatus('Step 2/3 — redirecting to YNAB…');
+        setTimeout(() => { window.location.href = `${YNAB_AUTH_URL}?${params}`; }, 300);
+      } catch (err) {
+        showSetupError('Could not start sign-in: ' + err.message);
+        if (btn) { btn.textContent = 'Sign in with YNAB →'; btn.disabled = false; }
+      }
+    }
+
+    // Returns true if this page load was an OAuth callback (success or error).
+    async function handleOAuthCallback() {
+      const params  = new URLSearchParams(window.location.search);
+      const code    = params.get('code');
+      const state   = params.get('state');
+      const errCode = params.get('error');
+
+      if (!code && !errCode) return false;
+
+      // Strip code/error from URL bar AND collapse /oauth/callback → /
+      history.replaceState(null, '', '/');
+
+      if (errCode) {
+        showScreen('setupScreen');
+        const desc = (params.get('error_description') || errCode).replace(/\+/g, ' ');
+        showSetupError('YNAB authorization failed: ' + desc);
+        return true;
+      }
+
+      const expectedState = sessionStorage.getItem(PKCE_STATE_KEY);
+      const verifier      = sessionStorage.getItem(PKCE_VERIFIER_KEY);
+      sessionStorage.removeItem(PKCE_STATE_KEY);
+      sessionStorage.removeItem(PKCE_VERIFIER_KEY);
+
+      if (!expectedState || state !== expectedState) {
+        showScreen('setupScreen');
+        showSetupError('Sign-in failed: state mismatch (possible CSRF). Please try again.');
+        return true;
+      }
+      if (!verifier) {
+        showScreen('setupScreen');
+        showSetupError('Sign-in failed: missing PKCE verifier (did you start sign-in in a different tab?). Please try again.');
+        return true;
+      }
+
       showScreen('setupScreen');
-      showSetupError('Your token was rejected (it may have been revoked). Paste a new one to continue.');
+      showSetupStatus('Step 3/3 — exchanging authorization code…');
+
+      try {
+        const res = await fetch('/api/oauth/exchange', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({ code, code_verifier: verifier, redirect_uri: getRedirectUri() }),
+        });
+        const tokens = await res.json().catch(() => ({}));
+        if (!res.ok || !tokens.access_token) {
+          showSetupError('Token exchange failed: ' + (tokens.error_description || tokens.error || ('HTTP ' + res.status)));
+          return true;
+        }
+        storeTokens(tokens);
+        apiKey = tokens.access_token;
+      } catch (err) {
+        showSetupError('Token exchange network error: ' + err.message);
+      }
+      return true;
+    }
+
+    function showExpired() {
+      clearTokens();
+      showScreen('setupScreen');
+      showSetupError('Your session expired or was revoked. Please sign in again.');
     }
     let monthData = [], allGroups = [], chartInstances = {};
     let topCatMonthIdx = 0;
@@ -440,11 +605,32 @@
     let donutChart = null, catTrendChart = null;
 
     // ── YNAB API ─────────────────────────────────────────────
-    // quiet:true suppresses showExpired() for background calls — a silent
+    // quiet:true suppresses showExpired() for background calls. A silent
     // prefetch should never eject the user from the dashboard.
+    //
+    // Two layers of token recovery:
+    //   1. Proactive: getValidAccessToken refreshes if within 60s of expiry
+    //   2. Reactive: on 401, force-refresh and retry once (handles revocation
+    //      or YNAB's clock disagreeing with ours)
     async function ynabFetch(path, { quiet = false } = {}) {
-      const res = await fetch(`${YNAB_BASE}${path}`, { headers: { Authorization: `Bearer ${apiKey}` } });
-      if (res.status === 401) { clearToken(); if (!quiet) showExpired(); throw new Error('Session expired'); }
+      let token = await getValidAccessToken({ quiet });
+      if (!token) {
+        if (!quiet) showExpired();
+        throw new Error('Not signed in');
+      }
+      apiKey = token;
+      let res = await fetch(`${YNAB_BASE}${path}`, { headers: { Authorization: `Bearer ${token}` } });
+      if (res.status === 401) {
+        const fresh = await refreshAccessToken({ quiet });
+        if (!fresh) { if (!quiet) showExpired(); throw new Error('Session expired'); }
+        apiKey = fresh;
+        res = await fetch(`${YNAB_BASE}${path}`, { headers: { Authorization: `Bearer ${fresh}` } });
+        if (res.status === 401) {
+          clearTokens();
+          if (!quiet) showExpired();
+          throw new Error('Session expired');
+        }
+      }
       if (res.status === 404) return null;
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
@@ -540,7 +726,7 @@
       ['setupScreen','loadingScreen','budgetScreen','dashboard'].forEach(s =>
         document.getElementById(s).style.display = s===id ? (id==='dashboard'?'block':'flex') : 'none');
     }
-    function showSetup() { clearToken(); localStorage.removeItem('ynab_budget'); showScreen('setupScreen'); }
+    function showSetup() { clearTokens(); localStorage.removeItem('ynab_budget'); showScreen('setupScreen'); }
     function showLoading(msg='Loading…') { document.getElementById('loadingMsg').textContent=msg; showScreen('loadingScreen'); }
     function showBudgetPicker() {
       document.getElementById('budgetList').innerHTML = budgets.map(b =>
@@ -551,9 +737,9 @@
       showScreen('budgetScreen');
     }
 
-    // ── Auth ─────────────────────────────────────────────────
-    async function connectWithToken(token) {
-      apiKey = token;
+    // ── Connect ──────────────────────────────────────────────
+    // Loads budgets and picks one. Assumes a valid access token already in apiKey.
+    async function loadBudgetAndStart() {
       showLoading('Loading your budget…');
       budgets = await fetchBudgets();
       const savedId = localStorage.getItem('ynab_budget');
@@ -1138,12 +1324,22 @@
 
     // ── Boot ─────────────────────────────────────────────────
     (async function init() {
-      const token = findToken();
-      if (!token) { showScreen('setupScreen'); return; }
+      // Step 1: if this page load is the OAuth redirect, exchange the code for tokens
+      const wasCallback = await handleOAuthCallback();
+
+      // Step 2: try to use an existing or freshly-stored access token
+      const token = await getValidAccessToken({ quiet: true });
+      if (!token) {
+        // Not signed in. handleOAuthCallback already showed any error.
+        if (!wasCallback) showScreen('setupScreen');
+        return;
+      }
+      apiKey = token;
+
       showSetupStatus('Connecting to YNAB…');
       showScreen('setupScreen');
       try {
-        await connectWithToken(token);
+        await loadBudgetAndStart();
       } catch (err) {
         // ynabFetch handles 401 via showExpired(); catch anything else
         if (apiKey) {
