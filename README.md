@@ -2,23 +2,27 @@
 
 A self-contained, browser-based spending dashboard for [YNAB](https://www.ynab.com/) — monthly trends, category drill-downs, and group breakdowns. **No backend, no install, no account required beyond YNAB itself.**
 
+### 👉 Try it: <https://ynab-dashboard.org>
+
 ![Built with Chart.js](https://img.shields.io/badge/Chart.js-vanilla%20JS-ff6384) ![License](https://img.shields.io/badge/license-MIT-blue)
 
 ---
 
-## Try it
+## How it works
 
 1. Create a YNAB **personal access token** at <https://app.ynab.com/settings/developer> → *New Token*.
-2. Open the dashboard in a browser and paste the token when prompted.
+2. Visit <https://ynab-dashboard.org> (or run locally — see below) and paste the token when prompted.
 
-That's it. The token is saved in your browser's `localStorage` so you only paste it once. It's sent only to `api.ynab.com` — there is no other server.
+That's it. The token is saved in your browser's `localStorage` so you only paste it once. It's sent only to `api.ynab.com` — never to the dashboard host or any other server.
 
 ### Run locally
 
+If you'd rather not trust a hosted copy, you can run the same HTML file from your machine:
+
 ```bash
-python serve.py
-# or
-python -m http.server 3131 --directory public
+git clone https://github.com/TnTBass/ynab-spending-dashboard.git
+cd ynab-spending-dashboard
+python serve.py            # or:  python -m http.server 3131 --directory public
 ```
 
 Then open <http://localhost:3131/>.
@@ -73,9 +77,7 @@ This repo includes a [`wrangler.jsonc`](./wrangler.jsonc) so you can deploy to C
 1. In the Cloudflare dashboard: **Workers & Pages** → **Create application** → **Connect to Git** → pick your fork.
 2. Leave **Build command** blank and **Deploy command** as the default `npx wrangler deploy`. Cloudflare reads `wrangler.jsonc` and uploads `./public` as static assets.
 
-Your dashboard will be live at `<project>.<your-subdomain>.workers.dev`.
-
-A hosted copy is available at *(TBD — link goes here once deployed)*.
+Your dashboard will be live at `<project>.<your-subdomain>.workers.dev`. To wire up a custom domain, add it under the Worker's **Settings → Domains & Routes**.
 
 ---
 
