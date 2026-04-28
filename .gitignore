@@ -15,3 +15,8 @@ Thumbs.db
 .env
 .env.local
 .env.*.local
+.dev.vars
+
+# Wrangler
+.wrangler/
+node_modules/

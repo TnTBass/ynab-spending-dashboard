@@ -1,15 +1,24 @@
 /**
- * Cloudflare Workers Static Assets config.
- * https://developers.cloudflare.com/workers/static-assets/
+ * Cloudflare Worker config for the YNAB Spending Dashboard.
  *
- * This site has no Worker code — only static files in ./public.
- * Cloudflare serves them directly from its global CDN.
+ * The Worker serves static assets from ./public AND exposes three small
+ * API routes that proxy YNAB's /oauth/token endpoint. The proxy holds
+ * the OAuth client_secret that YNAB requires for the token exchange,
+ * which can't safely live in a browser.
+ *
+ * Required environment:
+ *   YNAB_CLIENT_ID     — public OAuth client ID (Variable, can be in dashboard or here)
+ *   YNAB_CLIENT_SECRET — OAuth client secret (Secret — set via dashboard or `wrangler secret put`)
+ *
+ * Local dev: copy .dev.vars.example → .dev.vars (gitignored) and run `npx wrangler dev`.
  */
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "ynab-spending-dashboard",
+  "name":               "ynab-spending-dashboard",
+  "main":               "src/worker.js",
   "compatibility_date": "2026-04-28",
   "assets": {
-    "directory": "./public"
+    "directory": "./public",
+    "binding":   "ASSETS"
   }
 }
