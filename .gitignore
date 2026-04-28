@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.py[oc]
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Claude Code local settings (may contain tokens/permissions)
+.claude/settings.local.json
+
+# Environment / secrets
+.env
+.env.local
+.env.*.local

@@ -1,0 +1,1156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <title>YNAB Spending Dashboard</title>
+  <link rel="preconnect" href="https://api.ynab.com">
+  <link rel="preconnect" href="https://cdn.jsdelivr.net">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- PDF libraries loaded async — only needed on button click, not at startup -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" async></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" async></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #f5f6fa; color: #2d3748;
+    }
+
+    /* ── Setup / Loading ───────────────────────────────── */
+    .screen { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; }
+    .setup-card { background: white; border-radius: 16px; padding: 40px; width: 100%; max-width: 440px; box-shadow: 0 4px 24px rgba(0,0,0,0.1); }
+    .setup-card h1 { font-size: 1.5rem; font-weight: 700; margin-bottom: 8px; }
+    .setup-card .lead { color: #718096; font-size: 0.9rem; margin-bottom: 24px; line-height: 1.5; }
+    .field { margin-bottom: 16px; }
+    .field label { display: block; font-size: 0.8rem; font-weight: 600; color: #4a5568; margin-bottom: 6px; }
+    .field input { width: 100%; padding: 10px 12px; border: 1.5px solid #e2e8f0; border-radius: 8px; font-size: 0.9rem; transition: border-color 0.15s; }
+    .field input:focus { outline: none; border-color: #4299e1; }
+    .field .hint-link { font-size: 0.75rem; color: #4299e1; margin-top: 6px; display: block; text-decoration: none; }
+    .field .hint-link:hover { text-decoration: underline; }
+    .checkbox-row { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; font-size: 0.85rem; color: #4a5568; cursor: pointer; }
+    .checkbox-row input { width: 15px; height: 15px; cursor: pointer; }
+    .readonly-note { background: #f0fff4; border: 1px solid #9ae6b4; border-radius: 8px; padding: 10px 12px; font-size: 0.8rem; color: #276749; margin-bottom: 20px; line-height: 1.4; }
+    .btn-primary { width: 100%; padding: 11px; background: #4299e1; color: white; border: none; border-radius: 8px; font-size: 0.95rem; font-weight: 600; cursor: pointer; transition: background 0.15s; }
+    .btn-primary:hover { background: #3182ce; }
+    .btn-primary:disabled { background: #bee3f8; cursor: not-allowed; }
+    .token-input { width: 100%; padding: 11px 12px; border: 1px solid #cbd5e0; border-radius: 8px; font-size: 0.9rem; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; box-sizing: border-box; margin-bottom: 12px; }
+    .token-input:focus { outline: none; border-color: #4299e1; box-shadow: 0 0 0 3px rgba(66,153,225,0.15); }
+    .setup-help { font-size: 0.85rem; color: #4a5568; margin-bottom: 14px; line-height: 1.5; }
+    .setup-help a { color: #3182ce; text-decoration: none; font-weight: 500; }
+    .setup-help a:hover { text-decoration: underline; }
+    .error-msg { color: #e53e3e; font-size: 0.82rem; margin-top: 12px; min-height: 18px; }
+    .budget-list { display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px; }
+    .budget-option { padding: 14px 16px; border: 1.5px solid #e2e8f0; border-radius: 10px; cursor: pointer; transition: all 0.15s; font-size: 0.9rem; }
+    .budget-option:hover { border-color: #4299e1; background: #ebf8ff; }
+    .budget-option .bname { font-weight: 600; }
+    .budget-option .bcurr { font-size: 0.75rem; color: #718096; margin-top: 2px; }
+    .spinner-wrap { text-align: center; }
+    .spinner { width: 40px; height: 40px; border: 4px solid #bee3f8; border-top-color: #4299e1; border-radius: 50%; animation: spin 0.8s linear infinite; margin: 0 auto 16px; }
+    .spinner.sm { width: 20px; height: 20px; border-width: 3px; margin: 12px auto; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .loading-msg { color: #718096; font-size: 0.9rem; }
+
+    /* ── Dashboard ─────────────────────────────────────── */
+    #dashboard { padding: 32px; }
+    .top-bar { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 28px; flex-wrap: wrap; gap: 12px; }
+    .top-bar h1 { font-size: 1.5rem; font-weight: 700; }
+    .top-bar .subtitle { font-size: 0.85rem; color: #718096; margin-top: 3px; }
+    .top-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .top-actions select { padding: 7px 10px; border: 1.5px solid #e2e8f0; border-radius: 8px; font-size: 0.85rem; background: white; cursor: pointer; color: #4a5568; }
+    .btn-secondary { padding: 7px 14px; border: 1.5px solid #e2e8f0; border-radius: 8px; font-size: 0.85rem; background: white; cursor: pointer; color: #4a5568; transition: all 0.15s; }
+    .btn-secondary:hover { border-color: #4299e1; color: #4299e1; }
+
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+    .card { background: white; border-radius: 12px; padding: 24px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
+    .card.full { grid-column: 1 / -1; }
+    .card-title-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+    .card-title-row h2 { font-size: 1rem; font-weight: 600; color: #4a5568; }
+    .card .hint { font-size: 0.75rem; color: #a0aec0; margin-bottom: 16px; }
+    .card canvas { cursor: pointer; }
+    .month-nav { display: flex; align-items: center; gap: 6px; }
+    .month-nav button { background: none; border: 1.5px solid #e2e8f0; border-radius: 6px; width: 26px; height: 26px; cursor: pointer; font-size: 1rem; color: #4a5568; line-height: 1; transition: all 0.15s; }
+    .month-nav button:hover:not(:disabled) { border-color: #4299e1; color: #4299e1; }
+    .month-nav button:disabled { opacity: 0.3; cursor: not-allowed; }
+    .month-nav span { font-size: 0.82rem; font-weight: 600; color: #4a5568; min-width: 44px; text-align: center; }
+
+    .stat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 16px; grid-column: 1 / -1; }
+    .stat { background: white; border-radius: 12px; padding: 20px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); cursor: pointer; transition: box-shadow 0.15s, transform 0.15s; }
+    .stat:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.12); transform: translateY(-1px); }
+    .stat .label { font-size: 0.75rem; color: #718096; text-transform: uppercase; letter-spacing: 0.05em; }
+    .stat .value { font-size: 1.4rem; font-weight: 700; margin-top: 4px; }
+    .stat .delta { font-size: 0.8rem; margin-top: 4px; }
+    .up { color: #e53e3e; } .down { color: #38a169; } .neutral { color: #718096; }
+
+    /* ── Modal ─────────────────────────────────────────── */
+    .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: 100; align-items: center; justify-content: center; }
+    .modal-overlay.open { display: flex; }
+    .modal { background: white; border-radius: 16px; width: 760px; max-width: 95vw; max-height: 88vh; overflow-y: auto; padding: 32px; box-shadow: 0 20px 60px rgba(0,0,0,0.25); animation: slideUp 0.2s ease; }
+    @keyframes slideUp { from { opacity:0; transform:translateY(16px); } to { opacity:1; transform:translateY(0); } }
+    .modal-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; }
+    .modal-header h2 { font-size: 1.4rem; font-weight: 700; }
+    .modal-header .total { font-size: 0.9rem; color: #718096; margin-top: 4px; }
+    .modal-close { background: #f7fafc; border: none; border-radius: 8px; padding: 6px 12px; font-size: 1rem; cursor: pointer; color: #4a5568; }
+    .modal-close:hover { background: #edf2f7; }
+    .modal-layout { display: grid; grid-template-columns: 200px 1fr; gap: 24px; align-items: start; }
+    .group-tabs { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+    .tab { padding: 4px 12px; border-radius: 20px; font-size: 0.8rem; font-weight: 600; cursor: pointer; border: 2px solid transparent; transition: all 0.15s; opacity: 0.5; }
+    .tab.active { opacity: 1; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+    th { text-align: left; padding: 8px 10px; font-size: 0.75rem; color: #718096; text-transform: uppercase; letter-spacing: 0.04em; border-bottom: 2px solid #e2e8f0; }
+    td { padding: 9px 10px; border-bottom: 1px solid #f0f0f0; }
+    td.amount { text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
+    td.memo { color: #718096; font-size: 0.82rem; max-width: 180px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .bar-bg { background: #f0f0f0; border-radius: 4px; height: 6px; }
+    .bar-fill { height: 6px; border-radius: 4px; transition: width 0.3s; }
+    .group-badge { display: inline-block; padding: 1px 7px; border-radius: 10px; font-size: 0.7rem; font-weight: 600; }
+    .modal-drill-hint { font-size: 0.72rem; color: #a0aec0; margin: 0 0 8px; }
+    #modalTable tr { cursor: pointer; transition: background 0.1s; }
+    #modalTable tr:hover td { background: #f7fafc; }
+    .uncleared td { color: #a0aec0; }
+
+    /* ── Category drill-down ───────────────────────────── */
+    #categoryView { display: none; }
+    .breadcrumb { display: flex; align-items: center; gap: 8px; font-size: 0.85rem; color: #718096; margin-bottom: 20px; }
+    .breadcrumb a { color: #4299e1; cursor: pointer; text-decoration: none; font-weight: 600; }
+    .breadcrumb a:hover { text-decoration: underline; }
+    .breadcrumb .sep { color: #cbd5e0; }
+    .breadcrumb .current { color: #2d3748; font-weight: 600; }
+    .cat-stats { display: grid; grid-template-columns: repeat(3,1fr); gap: 12px; margin-bottom: 20px; }
+    .cat-stat { background: #f7fafc; border-radius: 8px; padding: 12px 14px; }
+    .cat-stat .cs-label { font-size: 0.7rem; color: #718096; text-transform: uppercase; letter-spacing: 0.05em; }
+    .cat-stat .cs-value { font-size: 1.1rem; font-weight: 700; margin-top: 2px; }
+    .cat-detail-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; align-items: start; margin-bottom: 24px; }
+    .month-breakdown table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+    .month-breakdown th { text-align: left; padding: 7px 10px; font-size: 0.72rem; color: #718096; text-transform: uppercase; letter-spacing: 0.04em; border-bottom: 2px solid #e2e8f0; }
+    .month-breakdown td { padding: 8px 10px; border-bottom: 1px solid #f0f0f0; }
+    .month-breakdown td.amt { text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
+    .month-breakdown .zero { color: #cbd5e0; }
+    .month-breakdown tr { cursor: pointer; transition: background 0.1s; }
+    .month-breakdown tr:hover td { background: #f7fafc; }
+    .month-breakdown tr.active-month td { background: #fffaf0; font-weight: 600; }
+    .trend-badge { display: inline-block; font-size: 0.72rem; font-weight: 600; padding: 1px 6px; border-radius: 10px; margin-left: 4px; }
+    .trend-up { background: #fff5f5; color: #c53030; } .trend-down { background: #f0fff4; color: #276749; } .trend-flat { background: #f7fafc; color: #718096; }
+    .txn-section { border-top: 1px solid #e2e8f0; padding-top: 20px; }
+    .txn-section h3 { font-size: 0.9rem; font-weight: 600; color: #4a5568; margin-bottom: 12px; }
+    .txn-empty { color: #a0aec0; font-size: 0.875rem; padding: 8px 0; }
+    .txn-legend { font-size: 0.75rem; color: #718096; margin-top: 8px; }
+    .txn-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+    .txn-table th { text-align: left; padding: 7px 10px; font-size: 0.72rem; color: #718096; text-transform: uppercase; letter-spacing: 0.04em; border-bottom: 2px solid #e2e8f0; white-space: nowrap; }
+    .txn-table td { padding: 9px 10px; border-bottom: 1px solid #f0f0f0; vertical-align: middle; }
+    .txn-table tr:last-child td { border-bottom: none; }
+    .txn-date  { white-space: nowrap; color: #4a5568; font-variant-numeric: tabular-nums; }
+    .txn-account { color: #718096; max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .txn-payee { font-weight: 500; max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .txn-memo-cell { max-width: 160px; }
+    .txn-memo  { font-size: 0.8rem; color: #718096; font-style: italic; }
+    .txn-table .amount { text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .txn-table .uncleared td { color: #a0aec0; }
+    .txn-table .uncleared .amount { color: #a0aec0; }
+
+    /* ── No-capture: excluded from html2canvas PDF snapshots ── */
+    /* (class applied to button rows so they don't appear in the PDF) */
+  </style>
+</head>
+<body>
+
+  <!-- ── Setup ───────────────────────────────────────────── -->
+  <div class="screen" id="setupScreen">
+    <div class="setup-card">
+      <h1>YNAB Spending Dashboard</h1>
+      <p class="lead">Visualize your spending with month-by-month breakdowns, group trends, and transaction drill-downs.</p>
+      <div class="readonly-note">
+        🔒 <strong>Your data stays on your device.</strong> Your token is sent only to <code>api.ynab.com</code>, never to any other server. This page has no backend.
+      </div>
+      <p class="setup-help">
+        Paste a YNAB <strong>personal access token</strong> below. You can create one at
+        <a href="https://app.ynab.com/settings/developer" target="_blank" rel="noopener">app.ynab.com/settings/developer</a>
+        → <em>New Token</em>. Tokens grant full access to your budget — only paste tokens you've created yourself.
+      </p>
+      <form id="tokenForm" onsubmit="saveToken(event)">
+        <input class="token-input" id="tokenInput" type="password" autocomplete="off" spellcheck="false" placeholder="Paste your YNAB personal access token" />
+        <button class="btn-primary" id="connectBtn" type="submit">Connect →</button>
+      </form>
+      <div id="setupError" style="margin-top:14px;padding:10px 12px;border-radius:8px;font-size:0.85rem;display:none"></div>
+      <div id="setupStatus" style="margin-top:14px;font-size:0.82rem;color:#718096;text-align:center;display:none"></div>
+      <p style="font-size:0.75rem;color:#a0aec0;margin-top:16px;text-align:center">
+        Token is saved in this browser's <code>localStorage</code> so you don't have to paste it again. Use <em>Sign out</em> to remove it.
+      </p>
+    </div>
+  </div>
+
+  <!-- ── Loading ─────────────────────────────────────────── -->
+  <div class="screen" id="loadingScreen" style="display:none">
+    <div class="spinner-wrap">
+      <div class="spinner"></div>
+      <p class="loading-msg" id="loadingMsg">Connecting to YNAB…</p>
+    </div>
+  </div>
+
+  <!-- ── Budget picker ───────────────────────────────────── -->
+  <div class="screen" id="budgetScreen" style="display:none">
+    <div class="setup-card">
+      <h1>Choose a budget</h1>
+      <p class="lead" style="margin-bottom:20px">Select which budget to visualize.</p>
+      <div class="budget-list" id="budgetList"></div>
+      <button class="btn-secondary" style="width:100%;margin-top:4px" onclick="showSetup()">← Use a different token</button>
+    </div>
+  </div>
+
+  <!-- ── Dashboard ───────────────────────────────────────── -->
+  <div id="dashboard" style="display:none">
+    <div class="top-bar">
+      <div>
+        <h1 id="budgetName"></h1>
+        <p class="subtitle" id="periodLabel"></p>
+      </div>
+      <div class="top-actions no-capture">
+        <select id="periodSelect" onchange="handlePeriodChange()">
+          <option value="3">Last 3 months</option>
+          <option value="6" selected>Last 6 months</option>
+          <option value="12">Last 12 months</option>
+          <option value="ytd">This year</option>
+        </select>
+        <button class="btn-secondary" onclick="refreshData()">↻ Refresh</button>
+        <span id="refreshStatus" style="font-size:0.78rem;color:#a0aec0;min-width:80px"></span>
+        <button id="dashPdfBtn" class="btn-secondary" onclick="downloadPDF()">⬇ PDF</button>
+        <button class="btn-secondary" onclick="showBudgetPicker()">⚙ Switch budget</button>
+        <button class="btn-secondary" onclick="showSetup()">⏏ Sign out</button>
+      </div>
+    </div>
+
+    <div class="grid" style="padding:0 32px 32px">
+      <div class="stat-grid" id="statCards"></div>
+
+      <div class="card full">
+        <h2>Total Monthly Spending</h2>
+        <div class="hint">Click a data point to drill down</div>
+        <canvas id="totalChart" height="70"></canvas>
+      </div>
+
+      <div class="card full">
+        <h2>Spending by Group</h2>
+        <div class="hint">Click a data point to drill down by month</div>
+        <canvas id="groupChart" height="70"></canvas>
+      </div>
+
+      <div class="card">
+        <div class="card-title-row">
+          <h2>Top Categories</h2>
+          <div class="month-nav">
+            <button id="topCatPrev" onclick="topCatNav(-1)">‹</button>
+            <span id="topCatMonthLabel"></span>
+            <button id="topCatNext" onclick="topCatNav(1)">›</button>
+          </div>
+        </div>
+        <div class="hint">Click to see full month detail</div>
+        <canvas id="topCatBar" height="160"></canvas>
+      </div>
+
+      <div class="card">
+        <h2>Group Trend</h2>
+        <div class="hint">
+          Showing:&nbsp;<select id="groupTrendSelect" onchange="renderGroupTrendChart()" style="border:none;background:transparent;color:#a0aec0;font-size:0.75rem;cursor:pointer"></select>
+        </div>
+        <canvas id="groupTrendChart" height="160"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Modal ───────────────────────────────────────────── -->
+  <div class="modal-overlay" id="modalOverlay" onclick="handleOverlayClick(event)">
+    <div class="modal">
+      <div class="modal-header">
+        <div style="display:flex;align-items:center;gap:14px">
+          <div>
+            <h2 id="modalTitle"></h2>
+            <div class="total" id="modalTotal"></div>
+          </div>
+          <div class="month-nav no-capture" id="modalMonthNavWrap" style="display:none">
+            <button id="modalMonthPrev" onclick="modalMonthNav(-1)">‹</button>
+            <button id="modalMonthNext" onclick="modalMonthNav(1)">›</button>
+          </div>
+        </div>
+        <div class="no-capture" style="display:flex;gap:8px">
+          <button id="modalPdfBtn" class="modal-close" onclick="downloadPDF()">⬇ PDF</button>
+          <button class="modal-close" onclick="closeModal()">✕ Close</button>
+        </div>
+      </div>
+
+      <!-- Month summary view -->
+      <div id="monthView">
+        <div class="modal-layout">
+          <canvas id="modalDonut" style="max-width:200px"></canvas>
+          <div>
+            <div class="group-tabs" id="groupTabsContainer"></div>
+            <p class="modal-drill-hint">Click any row to see transactions →</p>
+            <table>
+              <thead><tr><th>Category</th><th>Group</th><th>Amount</th><th style="width:100px"></th></tr></thead>
+              <tbody id="modalTable"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Category drill-down view -->
+      <div id="categoryView">
+        <div class="breadcrumb">
+          <a id="breadcrumbMonth" onclick="backToMonth()"></a>
+          <span class="sep">›</span>
+          <span class="current" id="breadcrumbCat"></span>
+          <div class="month-nav" style="margin-left:auto">
+            <button id="catMonthPrev" onclick="catMonthNav(-1)">‹</button>
+            <button id="catMonthNext" onclick="catMonthNav(1)">›</button>
+          </div>
+        </div>
+        <div class="cat-stats" id="catStats"></div>
+        <div class="cat-detail-layout">
+          <canvas id="categoryTrendChart"></canvas>
+          <div class="month-breakdown">
+            <table>
+              <thead><tr><th>Month</th><th class="amt">Spent</th><th>vs Prior</th></tr></thead>
+              <tbody id="catMonthTable"></tbody>
+            </table>
+          </div>
+        </div>
+        <!-- Transactions for selected month -->
+        <div class="txn-section">
+          <h3 id="txnTitle">Transactions</h3>
+          <div id="txnContent"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ── Helpers for setup screen feedback ────────────────────
+    function showSetupError(msg) {
+      const el = document.getElementById('setupError');
+      if (!el) return;
+      el.textContent = msg;
+      el.style.display = 'block';
+      el.style.background = '#fff5f5';
+      el.style.color = '#c53030';
+      el.style.border = '1px solid #feb2b2';
+    }
+    function showSetupStatus(msg) {
+      const el = document.getElementById('setupStatus');
+      if (!el) return;
+      el.textContent = msg;
+      el.style.display = 'block';
+    }
+    function clearSetupFeedback() {
+      const err = document.getElementById('setupError');
+      const sta = document.getElementById('setupStatus');
+      if (err) { err.style.display = 'none'; err.textContent = ''; }
+      if (sta) { sta.style.display = 'none'; sta.textContent = ''; }
+    }
+
+    // ── Global error catcher ─────────────────────────────────
+    window.addEventListener('error', function(e) {
+      showSetupError('Script error — ' + e.message + (e.lineno ? ' (line ' + e.lineno + ')' : ''));
+    });
+
+    // ── Constants ────────────────────────────────────────────
+    const YNAB_BASE   = 'https://api.ynab.com/v1';
+    const TOKEN_KEY   = 'ynab_pat';
+    const SKIP_GROUPS = new Set(['Internal Master Category', 'Credit Card Payments', 'Hidden Categories']);
+    const COLOR_PALETTE = ['#9f7aea','#48bb78','#ed8936','#4299e1','#fc8181','#38b2ac','#f687b3','#ecc94b','#667eea','#f6ad55'];
+    const groupColorMap = {};
+    function groupColor(name) {
+      if (!groupColorMap[name]) groupColorMap[name] = COLOR_PALETTE[Object.keys(groupColorMap).length % COLOR_PALETTE.length];
+      return groupColorMap[name];
+    }
+
+    // ── Cache ────────────────────────────────────────────────
+    // Past months can still change (backdated edits, etc.) — 24h TTL with manual ↻ Refresh
+    // for sooner. Current month: 5 min. Transactions: 2 min current / 24h past.
+    const CACHE_TTL = { current: 5 * 60_000, txn: 2 * 60_000, past: 24 * 60 * 60_000 };
+
+    function ck(...parts)  { return 'yc_' + parts.join('_'); }
+    function cacheGet(key) {
+      try {
+        const raw = sessionStorage.getItem(key);
+        if (!raw) return null;
+        const { v, exp } = JSON.parse(raw);
+        if (exp !== null && Date.now() > exp) { sessionStorage.removeItem(key); return null; }
+        return v;
+      } catch { return null; }
+    }
+    function cacheSet(key, value, ttl) {
+      try { sessionStorage.setItem(key, JSON.stringify({ v: value, exp: ttl ? Date.now() + ttl : null })); }
+      catch { /* QuotaExceededError – silently ignore */ }
+    }
+    function cacheInvalidateMonth(budgetId, month) { sessionStorage.removeItem(ck('m', budgetId, month)); }
+    // Deep invalidate: month detail plus any per-category transaction caches for that month.
+    function cacheInvalidateMonthDeep(budgetId, month) {
+      sessionStorage.removeItem(ck('m', budgetId, month));
+      const prefix = `yc_t_${budgetId}_`, suffix = `_${month}`;
+      for (let i = sessionStorage.length - 1; i >= 0; i--) {
+        const k = sessionStorage.key(i);
+        if (k && k.startsWith(prefix) && k.endsWith(suffix)) sessionStorage.removeItem(k);
+      }
+    }
+
+    // ── App state ────────────────────────────────────────────
+    let apiKey = '', budgets = [], activeBudget = null;
+
+    // ── Token (PAT) ──────────────────────────────────────────
+    function findToken() {
+      try { return localStorage.getItem(TOKEN_KEY) || ''; } catch { return ''; }
+    }
+
+    function clearToken() {
+      try { localStorage.removeItem(TOKEN_KEY); } catch {}
+      apiKey = '';
+    }
+
+    async function saveToken(event) {
+      if (event) event.preventDefault();
+      clearSetupFeedback();
+      const input = document.getElementById('tokenInput');
+      const token = (input?.value || '').trim();
+      if (!token) { showSetupError('Please paste a YNAB personal access token.'); return; }
+      const btn = document.getElementById('connectBtn');
+      if (btn) { btn.textContent = 'Connecting…'; btn.disabled = true; }
+      showSetupStatus('Verifying token…');
+      try {
+        try { localStorage.setItem(TOKEN_KEY, token); } catch {}
+        await connectWithToken(token);
+        if (input) input.value = '';
+      } catch (err) {
+        clearToken();
+        showSetupError('Could not connect: ' + err.message);
+      } finally {
+        if (btn) { btn.textContent = 'Connect →'; btn.disabled = false; }
+      }
+    }
+
+    function showExpired() {
+      clearToken();
+      showScreen('setupScreen');
+      showSetupError('Your token was rejected (it may have been revoked). Paste a new one to continue.');
+    }
+    let monthData = [], allGroups = [], chartInstances = {};
+    let topCatMonthIdx = 0;
+    let currentMonthIndex = 0, currentGroupFilter = 'all';
+    let catDetailMonthIdx = 0, currentCatName = '', currentCatId = '', currentCatColor = '', currentCatGroup = '';
+    let donutChart = null, catTrendChart = null;
+
+    // ── YNAB API ─────────────────────────────────────────────
+    // quiet:true suppresses showExpired() for background calls — a silent
+    // prefetch should never eject the user from the dashboard.
+    async function ynabFetch(path, { quiet = false } = {}) {
+      const res = await fetch(`${YNAB_BASE}${path}`, { headers: { Authorization: `Bearer ${apiKey}` } });
+      if (res.status === 401) { clearToken(); if (!quiet) showExpired(); throw new Error('Session expired'); }
+      if (res.status === 404) return null;
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error?.detail || `YNAB API error ${res.status}`);
+      }
+      return res.json();
+    }
+
+    async function fetchBudgets() {
+      return (await ynabFetch('/budgets')).data.budgets;
+    }
+    async function fetchMonthDetail(month, opts) {
+      const key = ck('m', activeBudget.id, month);
+      const hit = cacheGet(key);
+      if (hit) return hit;
+      const d = await ynabFetch(`/budgets/${activeBudget.id}/months/${month}`, opts);
+      const result = d?.data?.month ?? null;
+      if (result) cacheSet(key, result, isCurrentMonth(month) ? CACHE_TTL.current : CACHE_TTL.past);
+      return result;
+    }
+    async function fetchCategoryTransactions(catId, monthStr, opts) {
+      const key = ck('t', activeBudget.id, catId, monthStr);
+      const hit = cacheGet(key);
+      if (hit) return hit;
+      const d = await ynabFetch(`/budgets/${activeBudget.id}/categories/${catId}/transactions?since_date=${monthStr}`, opts);
+      if (!d) return [];
+      const next = nextYNABMonth(monthStr);
+      const result = d.data.transactions.filter(t => t.date >= monthStr && t.date < next);
+      cacheSet(key, result, isCurrentMonth(monthStr) ? CACHE_TTL.txn : CACHE_TTL.past);
+      return result;
+    }
+
+    // ── Date helpers ─────────────────────────────────────────
+    function toYNABMonth(d) { return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-01`; }
+    function nextYNABMonth(s) {
+      const [y, m] = s.split('-').map(Number);
+      return m === 12 ? `${y+1}-01-01` : `${y}-${String(m+1).padStart(2,'0')}-01`;
+    }
+    function getMonthDates(period) {
+      const now = new Date(), dates = [];
+      if (period === 'ytd') {
+        for (let i = 0; i <= now.getMonth(); i++) dates.push(toYNABMonth(new Date(now.getFullYear(), i, 1)));
+      } else {
+        const n = parseInt(period);
+        for (let i = n-1; i >= 0; i--) dates.push(toYNABMonth(new Date(now.getFullYear(), now.getMonth()-i, 1)));
+      }
+      return dates;
+    }
+    function fmtMonth(s, short = false) {
+      const d = new Date(s + 'T12:00:00Z');
+      return short ? d.toLocaleString('default',{month:'short',timeZone:'UTC'})
+                   : d.toLocaleString('default',{month:'long',year:'numeric',timeZone:'UTC'});
+    }
+    function isCurrentMonth(s) { return s === toYNABMonth(new Date()); }
+
+    // ── Data processing ──────────────────────────────────────
+    function processMonth(detail, monthStr) {
+      const categories = [], groupTotals = {};
+      let total = 0;
+      for (const cat of detail.categories ?? []) {
+        if (SKIP_GROUPS.has(cat.category_group_name) || cat.deleted || cat.activity >= 0) continue;
+        const amount = Math.abs(cat.activity) / 1000;
+        categories.push({ id: cat.id, name: cat.name, group: cat.category_group_name, amount });
+        groupTotals[cat.category_group_name] = (groupTotals[cat.category_group_name] || 0) + amount;
+        total += amount;
+      }
+      categories.sort((a, b) => b.amount - a.amount);
+      const partial = isCurrentMonth(monthStr);
+      return { month: monthStr, label: fmtMonth(monthStr)+(partial?' *':''), shortLabel: fmtMonth(monthStr,true)+(partial?'*':''), total, categories, groupTotals };
+    }
+
+    function datesForPeriod(period) {
+      return getMonthDates(period ?? document.getElementById('periodSelect').value);
+    }
+    function allCached(dates) {
+      return dates.every(m => cacheGet(ck('m', activeBudget.id, m)));
+    }
+
+    async function loadData({ spinner = true, quiet = false } = {}) {
+      const dates = datesForPeriod();
+      if (spinner && !allCached(dates)) showLoading(`Fetching ${dates.length} months…`);
+      const details = await Promise.all(dates.map(m => fetchMonthDetail(m, { quiet })));
+      monthData = dates.map((m, i) => details[i] ? processMonth(details[i], m)
+        : { month: m, label: fmtMonth(m), shortLabel: fmtMonth(m,true), total:0, categories:[], groupTotals:{} });
+      const seen = new Set();
+      for (const m of monthData) Object.keys(m.groupTotals).forEach(g => seen.add(g));
+      allGroups = [...seen];
+      for (const g of allGroups) groupColor(g);
+    }
+
+    // ── Screens ──────────────────────────────────────────────
+    function showScreen(id) {
+      ['setupScreen','loadingScreen','budgetScreen','dashboard'].forEach(s =>
+        document.getElementById(s).style.display = s===id ? (id==='dashboard'?'block':'flex') : 'none');
+    }
+    function showSetup() { clearToken(); localStorage.removeItem('ynab_budget'); showScreen('setupScreen'); }
+    function showLoading(msg='Loading…') { document.getElementById('loadingMsg').textContent=msg; showScreen('loadingScreen'); }
+    function showBudgetPicker() {
+      document.getElementById('budgetList').innerHTML = budgets.map(b =>
+        `<div class="budget-option" onclick="selectBudget('${b.id}')">
+          <div class="bname">${b.name}</div>
+          <div class="bcurr">${b.currency_format?.iso_code??''}</div>
+        </div>`).join('');
+      showScreen('budgetScreen');
+    }
+
+    // ── Auth ─────────────────────────────────────────────────
+    async function connectWithToken(token) {
+      apiKey = token;
+      showLoading('Loading your budget…');
+      budgets = await fetchBudgets();
+      const savedId = localStorage.getItem('ynab_budget');
+      const saved   = savedId && budgets.find(b => b.id === savedId);
+      if (saved) {
+        await selectBudget(saved.id);          // resume last-used budget
+      } else if (budgets.length === 1) {
+        await selectBudget(budgets[0].id);     // only one budget, auto-pick
+      } else {
+        showBudgetPicker();                    // multiple budgets, let user choose
+      }
+    }
+    async function selectBudget(id) {
+      activeBudget = budgets.find(b => b.id===id);
+      localStorage.setItem('ynab_budget', id);
+      try {
+        const warm = allCached(datesForPeriod());
+        if (warm) {
+          // Render immediately from cache, then silently refresh current month
+          await loadData({ spinner: false });
+          renderDashboard(); showScreen('dashboard');
+          refreshData({ silent: true });
+        } else {
+          await loadData(); renderDashboard(); showScreen('dashboard');
+        }
+        prefetchPeriods(); // warm up all other period data in the background
+      } catch (err) { if (apiKey) { showScreen('budgetScreen'); alert('Error loading data: '+err.message); } }
+    }
+    async function refreshData({ silent = false } = {}) {
+      if (silent) {
+        // Background refresh on page load — only re-fetch current month to avoid burning API
+        cacheInvalidateMonth(activeBudget.id, toYNABMonth(new Date()));
+        setRefreshStatus('updating');
+        // quiet:true — a background refresh must never eject the user from the dashboard
+        try { await loadData({ spinner: false, quiet: true }); renderDashboard(); }
+        catch (err) { console.warn('Background refresh:', err); }
+        finally { setRefreshStatus('idle'); }
+      } else {
+        // Manual ↻ — invalidate every displayed month (and its txn caches) so backdated edits surface
+        for (const m of datesForPeriod()) cacheInvalidateMonthDeep(activeBudget.id, m);
+        try { showLoading('Refreshing…'); await loadData({ spinner: false }); renderDashboard(); showScreen('dashboard'); }
+        catch (err) { showScreen('dashboard'); alert('Refresh failed: '+err.message); }
+      }
+    }
+    async function handlePeriodChange() {
+      if (allCached(datesForPeriod())) {
+        // All months in cache — swap data and re-render without any loading screen
+        await loadData({ spinner: false }); renderDashboard();
+      } else {
+        await refreshData();
+      }
+    }
+    // ── PDF colour-boost helpers ─────────────────────────────────────────────
+    // html2canvas composites semi-transparent fills against white, making them
+    // look washed-out in print.  Before capture we temporarily increase opacity
+    // on chart datasets, then restore the originals afterward.
+    function _boostColor(c) {
+      if (typeof c !== 'string') return c;
+      // Hex with 2-char alpha suffix, e.g. #4299e118 or #4299e170
+      if (/^#[0-9a-fA-F]{8}$/.test(c)) {
+        const alpha = parseInt(c.slice(7), 16);
+        if (alpha <= 0x30) return c.slice(0, 7) + 'bb'; // very faint fills → ~73%
+        return c.slice(0, 7);                             // dimmed bars (e.g. '70') → 100%
+      }
+      // rgba() form
+      const m = c.match(/^rgba\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*([\d.]+)\s*\)$/);
+      if (m) {
+        const a = parseFloat(m[4]);
+        if (a < 0.15) return `rgba(${m[1]},${m[2]},${m[3]},0.45)`;
+        if (a < 0.7)  return `rgba(${m[1]},${m[2]},${m[3]},0.85)`;
+      }
+      return c;
+    }
+    function _boostChartsForPdf() {
+      const all   = Object.assign({}, chartInstances);
+      if (donutChart)    all['__donut']    = donutChart;
+      if (catTrendChart) all['__catTrend'] = catTrendChart;
+      const saved = {};
+      for (const [k, ch] of Object.entries(all)) {
+        saved[k] = ch.data.datasets.map(ds => ds.backgroundColor);
+        ch.data.datasets.forEach(ds => {
+          if (Array.isArray(ds.backgroundColor))
+            ds.backgroundColor = ds.backgroundColor.map(_boostColor);
+          else if (ds.backgroundColor)
+            ds.backgroundColor = _boostColor(ds.backgroundColor);
+        });
+        ch.update('none');
+      }
+      return { saved, all };
+    }
+    function _restoreChartColors({ saved, all }) {
+      for (const [k, ch] of Object.entries(all)) {
+        if (!saved[k]) continue;
+        ch.data.datasets.forEach((ds, i) => { ds.backgroundColor = saved[k][i]; });
+        ch.update('none');
+      }
+    }
+    // ────────────────────────────────────────────────────────────────────────
+
+    async function downloadPDF() {
+      // html2canvas and jsPDF are loaded async — they may not be ready yet on first click
+      if (!window.html2canvas || !window.jspdf) {
+        alert('PDF libraries are still loading — please try again in a moment.');
+        return;
+      }
+      const modalOpen = document.getElementById('modalOverlay').classList.contains('open');
+      const catView   = document.getElementById('categoryView').style.display === 'block';
+      const state     = !modalOpen ? 'dashboard' : catView ? 'category' : 'month';
+
+      // Strip emojis and non-latin characters that jsPDF's Helvetica can't render
+      const pdfSafe = s => s.replace(/[^ -ɏ\s]/g, '').replace(/\s+/g, ' ').trim();
+
+      // Build title and filename
+      const bname  = activeBudget?.name ?? 'YNAB';
+      const period = (() => { const s = document.getElementById('periodSelect'); return s.options[s.selectedIndex].text; })();
+      const rawTitle = state === 'dashboard' ? `${bname} — ${period}`
+                     : state === 'month'     ? `${bname} — ${document.getElementById('modalTitle').textContent}`
+                     : `${bname} — ${document.getElementById('breadcrumbMonth').textContent}: ${document.getElementById('breadcrumbCat').textContent}`;
+      const title    = pdfSafe(rawTitle);
+      const filename = rawTitle.replace(/[^\w\s\-—]/g, '').replace(/\s+/g, '_') + '.pdf';
+
+      // Disable PDF buttons while generating
+      const btns = [document.getElementById('dashPdfBtn'), document.getElementById('modalPdfBtn')].filter(Boolean);
+      btns.forEach(b => { b.textContent = '⏳ Generating…'; b.disabled = true; });
+
+      const modal = document.querySelector('.modal');
+      const savedMaxH = modal.style.maxHeight, savedOvY = modal.style.overflowY;
+
+      try {
+        // For modal views, expand so html2canvas sees full content
+        if (state !== 'dashboard') {
+          modal.style.maxHeight = 'none';
+          modal.style.overflowY = 'visible';
+        }
+
+        // Scroll dashboard to top so the full element is captured
+        const scrollBefore = window.scrollY;
+        window.scrollTo(0, 0);
+
+        const target = state === 'dashboard'
+          ? document.getElementById('dashboard')
+          : modal;
+
+        // Boost semi-transparent chart fills so they look rich rather than
+        // washed-out when composited against the white PDF background.
+        const _pdfColorState = _boostChartsForPdf();
+        let cvs;
+        try {
+          cvs = await html2canvas(target, {
+            scale: 2,
+            useCORS: true,
+            logging: false,
+            backgroundColor: '#ffffff',
+            ignoreElements: el => el.classList.contains('no-capture'),
+            // html2canvas clones the DOM into a hidden iframe to render. The
+            // .modal's `animation: slideUp 0.2s ease` re-runs on the clone,
+            // and the capture lands mid-fade — making the whole PDF look
+            // ~50% washed out. Strip animations/transitions on the clone.
+            onclone: (doc) => {
+              const s = doc.createElement('style');
+              s.textContent = '*,*::before,*::after{animation:none!important;transition:none!important}';
+              doc.head.appendChild(s);
+            },
+          });
+        } finally {
+          _restoreChartColors(_pdfColorState);
+        }
+
+        window.scrollTo(0, scrollBefore);
+
+        // Build PDF: landscape for dashboard (wider charts), portrait for modals
+        const { jsPDF } = window.jspdf;
+        const orientation = state === 'dashboard' ? 'landscape' : 'portrait';
+        const pdf = new jsPDF({ orientation, unit: 'mm', format: 'a4' });
+
+        const pageW  = pdf.internal.pageSize.getWidth();
+        const pageH  = pdf.internal.pageSize.getHeight();
+        const margin = 10;
+        const usableW = pageW - 2 * margin;
+        const imgH    = (cvs.height / cvs.width) * usableW;
+        const imgData = cvs.toDataURL('image/png'); // PNG = lossless; preserves semi-transparent chart colours
+
+        // Title text
+        pdf.setFont('helvetica', 'bold');
+        pdf.setFontSize(11);
+        pdf.setTextColor(45, 55, 72);
+        pdf.text(title, margin, margin + 4);
+        const dateStr = new Date().toLocaleDateString('default', { month: 'long', day: 'numeric', year: 'numeric' });
+        pdf.setFont('helvetica', 'normal');
+        pdf.setFontSize(8);
+        pdf.setTextColor(113, 128, 150);
+        pdf.text(dateStr, pageW - margin, margin + 4, { align: 'right' });
+
+        const titleH    = 10;
+        const usableH   = pageH - margin - titleH;
+        let   yOffset   = margin + titleH; // where image starts on first page
+
+        // Multi-page: slide the image up by one page's worth each time.
+        // The 'capture' alias makes jsPDF embed the image once and reference
+        // it on each page; 'FAST' enables deflate compression instead of the
+        // raw-RGBA default (which was making 50+ MB PDFs for long modals).
+        let heightLeft = imgH;
+        let page = 0;
+        while (heightLeft > 0) {
+          if (page > 0) {
+            pdf.addPage();
+            yOffset = margin;
+          }
+          pdf.addImage(imgData, 'PNG', margin, yOffset - page * (pageH - 2 * margin), usableW, imgH, 'capture', 'FAST');
+          heightLeft -= (page === 0 ? usableH : pageH - 2 * margin);
+          page++;
+        }
+
+        pdf.save(filename);
+      } catch (err) {
+        console.error('PDF error:', err);
+        alert('Could not generate PDF: ' + err.message);
+      } finally {
+        // Restore modal dimensions
+        modal.style.maxHeight = savedMaxH;
+        modal.style.overflowY = savedOvY;
+        btns.forEach(b => { b.textContent = '⬇ PDF'; b.disabled = false; });
+      }
+    }
+    function setRefreshStatus(state) {
+      const el = document.getElementById('refreshStatus');
+      if (el) el.textContent = state === 'updating' ? '● Updating…' : '';
+    }
+    // Background: silently prefetch every period so switching is instant
+    async function prefetchPeriods() {
+      for (const period of ['3','6','12','ytd']) {
+        for (const month of datesForPeriod(period)) {
+          if (!cacheGet(ck('m', activeBudget.id, month))) {
+            try { await fetchMonthDetail(month, { quiet: true }); }
+            catch { return; } // stop prefetching on any error (incl. expired token)
+            await new Promise(r => setTimeout(r, 150)); // gentle pacing — stay well under rate limit
+          }
+        }
+      }
+    }
+
+    // ── Chart helpers ────────────────────────────────────────
+    // Guard: Chart.js loaded synchronously but a CDN hiccup would leave Chart undefined.
+    // A TypeError here would abort the rest of the script, so guard before touching it.
+    if (typeof Chart !== 'undefined') Chart.defaults.animation = false;
+    function destroyChart(id) { if (chartInstances[id]) { chartInstances[id].destroy(); delete chartInstances[id]; } }
+    function makeChart(id, config) { destroyChart(id); chartInstances[id] = new Chart(document.getElementById(id), config); return chartInstances[id]; }
+    const fmtMoney  = v => '$' + v.toLocaleString(undefined,{minimumFractionDigits:0,maximumFractionDigits:0});
+    const fmtMoney2 = v => '$' + v.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+    const scaleY = { ticks:{callback:v=>fmtMoney(v)}, grid:{color:'#f0f0f0'} };
+    const tipMoney = { callbacks:{label:ctx=>` ${fmtMoney2(ctx.raw)}`} };
+
+    // ── Dashboard render ─────────────────────────────────────
+    function renderDashboard() {
+      document.getElementById('budgetName').textContent = activeBudget.name + ' — Spending';
+      const sel = document.getElementById('periodSelect');
+      document.getElementById('periodLabel').textContent =
+        sel.options[sel.selectedIndex].text + (monthData.some(m=>m.label.includes('*')) ? '  ·  * partial month' : '');
+      topCatMonthIdx = monthData.length - 1;
+      renderStatCards(); renderTotalChart(); renderGroupChart();
+      renderTopCatBar(); renderGroupTrendSelect(); renderGroupTrendChart();
+    }
+
+    function renderStatCards() {
+      document.getElementById('statCards').innerHTML = monthData.map((m, i) => {
+        const prev = monthData[i-1];
+        let dHtml = `<div class="delta neutral">Baseline</div>`;
+        if (prev?.total > 0) {
+          const diff = m.total - prev.total;
+          dHtml = diff > 0 ? `<div class="delta up">▲ ${fmtMoney(diff)} vs prior</div>`
+                : diff < 0 ? `<div class="delta down">▼ ${fmtMoney(-diff)} vs prior</div>`
+                : `<div class="delta neutral">No change</div>`;
+        }
+        return `<div class="stat" onclick="openModal(${i})">
+          <div class="label">${m.label}</div>
+          <div class="value">${fmtMoney(m.total)}</div>${dHtml}</div>`;
+      }).join('');
+    }
+
+    function renderTotalChart() {
+      makeChart('totalChart', { type:'line', data:{
+        labels: monthData.map(m=>m.shortLabel),
+        datasets:[{ label:'Total', data:monthData.map(m=>m.total),
+          borderColor:'#4299e1', backgroundColor:'rgba(66,153,225,0.1)',
+          borderWidth:3, pointRadius:7, pointHoverRadius:9, pointBackgroundColor:'#4299e1', fill:true, tension:0.3 }]
+      }, options:{ onClick:(e,els)=>{if(els.length)openModal(els[0].index);}, plugins:{legend:{display:false},tooltip:tipMoney}, scales:{y:scaleY} }});
+    }
+
+    function renderGroupChart() {
+      makeChart('groupChart', { type:'line', data:{
+        labels: monthData.map(m=>m.shortLabel),
+        datasets: allGroups.map(g=>({ label:g, data:monthData.map(m=>m.groupTotals[g]||0),
+          borderColor:groupColor(g), backgroundColor:groupColor(g)+'18',
+          borderWidth:2, pointRadius:5, pointHoverRadius:7, fill:true, tension:0.3 }))
+      }, options:{ onClick:(e,els)=>{if(els.length)openModal(els[0].index);}, plugins:{legend:{position:'top'},tooltip:tipMoney}, scales:{y:scaleY} }});
+    }
+
+    function renderTopCatBar() {
+      const m = monthData[topCatMonthIdx];
+      const top = m.categories.slice(0, 10);
+      document.getElementById('topCatMonthLabel').textContent = m.shortLabel;
+      document.getElementById('topCatPrev').disabled = topCatMonthIdx === 0;
+      document.getElementById('topCatNext').disabled = topCatMonthIdx === monthData.length - 1;
+      makeChart('topCatBar', { type:'bar', data:{
+        labels: top.map(c=>c.name),
+        datasets:[{ data:top.map(c=>c.amount), backgroundColor:top.map(c=>groupColor(c.group)), borderRadius:6 }]
+      }, options:{
+        indexAxis:'y',
+        onClick:(e, els) => {
+          if (!els.length) { openModal(topCatMonthIdx); return; }
+          const cat = monthData[topCatMonthIdx].categories[els[0].index];
+          if (!cat) return;
+          currentMonthIndex = topCatMonthIdx;
+          document.getElementById('modalOverlay').classList.add('open');
+          openCategoryDetail(cat.name);
+        },
+        plugins:{legend:{display:false},tooltip:tipMoney},
+        scales:{x:{ticks:{callback:v=>fmtMoney(v)},grid:{color:'#f0f0f0'}}}
+      }});
+    }
+    function topCatNav(dir) {
+      topCatMonthIdx = Math.max(0, Math.min(monthData.length-1, topCatMonthIdx+dir));
+      renderTopCatBar();
+    }
+
+    function renderGroupTrendSelect() {
+      document.getElementById('groupTrendSelect').innerHTML = allGroups.map(g=>`<option value="${g}">${g}</option>`).join('');
+    }
+    function renderGroupTrendChart() {
+      const group = document.getElementById('groupTrendSelect').value;
+      if (!group) return;
+      const cats = [...new Set(monthData.flatMap(m=>m.categories.filter(c=>c.group===group).map(c=>c.name)))];
+      const top5 = cats.map(name=>({ name, total:monthData.reduce((s,m)=>s+(m.categories.find(c=>c.name===name)?.amount??0),0) }))
+        .sort((a,b)=>b.total-a.total).slice(0,5);
+      const cols = ['#4299e1','#ed8936','#48bb78','#fc8181','#9f7aea'];
+      makeChart('groupTrendChart', { type:'line', data:{
+        labels: monthData.map(m=>m.shortLabel),
+        datasets: top5.map((c,i)=>({ label:c.name,
+          data:monthData.map(m=>m.categories.find(x=>x.name===c.name&&x.group===group)?.amount??0),
+          borderColor:cols[i], backgroundColor:cols[i], pointBackgroundColor:cols[i],
+          borderWidth:2, pointRadius:4, pointHoverRadius:6, tension:0.3, fill:false }))
+      }, options:{
+        onClick:(e,els)=>{
+          if (!els.length) return;
+          currentMonthIndex = els[0].index;
+          document.getElementById('modalOverlay').classList.add('open');
+          openCategoryDetail(top5[els[0].datasetIndex].name);
+        },
+        plugins:{
+          legend:{position:'top'},
+          tooltip:{callbacks:{label:ctx=>` ${ctx.dataset.label}: ${fmtMoney2(ctx.raw)}`}}
+        },
+        scales:{y:scaleY}
+      }});
+    }
+
+    // ── Modal: month view ────────────────────────────────────
+    function openModal(idx) { currentMonthIndex=idx; showMonthView(idx); document.getElementById('modalOverlay').classList.add('open'); }
+    function showMonthView(idx) {
+      currentMonthIndex=idx; currentGroupFilter='all';
+      const d = monthData[idx];
+      document.getElementById('modalTitle').textContent = d.label;
+      document.getElementById('modalTotal').textContent = 'Total: ' + fmtMoney2(d.total);
+      renderGroupTabs(d.categories); renderTable(d.categories); renderDonut(d.categories);
+      document.getElementById('modalMonthPrev').disabled = idx === 0;
+      document.getElementById('modalMonthNext').disabled = idx === monthData.length - 1;
+      document.getElementById('modalMonthNavWrap').style.display = 'flex';
+      document.getElementById('monthView').style.display = 'block';
+      document.getElementById('categoryView').style.display = 'none';
+    }
+    function modalMonthNav(dir) {
+      const newIdx = Math.max(0, Math.min(monthData.length-1, currentMonthIndex+dir));
+      if (newIdx !== currentMonthIndex) showMonthView(newIdx);
+    }
+    function catMonthNav(dir) {
+      const newIdx = Math.max(0, Math.min(monthData.length-1, catDetailMonthIdx+dir));
+      if (newIdx !== catDetailMonthIdx) selectCatMonth(newIdx);
+    }
+    function closeModal() { document.getElementById('modalOverlay').classList.remove('open'); }
+    function handleOverlayClick(e) { if (e.target.id==='modalOverlay') closeModal(); }
+    function backToMonth() { showMonthView(currentMonthIndex); }
+
+    function renderGroupTabs(cats) {
+      const groups = [...new Set(cats.map(c=>c.group))];
+      document.getElementById('groupTabsContainer').innerHTML =
+        `<div class="tab active" onclick="filterTable('all')" style="background:#ebf8ff;color:#2b6cb0;border-color:#bee3f8">All</div>` +
+        groups.map(g=>{const c=groupColor(g);return`<div class="tab" onclick="filterTable('${g}')" style="color:${c};border-color:${c}40;background:${c}14">${g}</div>`;}).join('');
+    }
+    function filterTable(group) {
+      currentGroupFilter=group;
+      document.querySelectorAll('#groupTabsContainer .tab').forEach(t=>t.classList.remove('active'));
+      const tabs=[...document.querySelectorAll('#groupTabsContainer .tab')];
+      const t=group==='all'?tabs[0]:tabs.find(t=>t.textContent===group);
+      if(t) t.classList.add('active');
+      const cats=monthData[currentMonthIndex].categories;
+      renderTable(group==='all'?cats:cats.filter(c=>c.group===group));
+    }
+    function renderTable(cats) {
+      const sorted=[...cats].sort((a,b)=>b.amount-a.amount), max=sorted[0]?.amount||1;
+      const tbody = document.getElementById('modalTable');
+      tbody.innerHTML = sorted.map((c,i)=>{
+        const pct=(c.amount/max*100).toFixed(0), col=groupColor(c.group);
+        return `<tr data-ci="${i}">
+          <td>${c.name}</td>
+          <td><span class="group-badge" style="background:${col}18;color:${col}">${c.group}</span></td>
+          <td class="amount">${fmtMoney2(c.amount)}</td>
+          <td><div class="bar-bg"><div class="bar-fill" style="width:${pct}%;background:${col}"></div></div></td>
+        </tr>`;
+      }).join('');
+      // Use event delegation — avoids quoting issues with category names
+      tbody.onclick = e => {
+        const tr = e.target.closest('tr[data-ci]');
+        if (tr) openCategoryDetail(sorted[+tr.dataset.ci].name);
+      };
+    }
+    function renderDonut(cats) {
+      const groups=[...new Set(cats.map(c=>c.group))];
+      const totals=groups.map(g=>cats.filter(c=>c.group===g).reduce((s,c)=>s+c.amount,0));
+      if(donutChart) donutChart.destroy();
+      donutChart=new Chart(document.getElementById('modalDonut'),{type:'doughnut',data:{
+        labels:groups,datasets:[{data:totals,backgroundColor:groups.map(groupColor),borderWidth:2}]
+      },options:{onClick:(e,els)=>{if(els.length)filterTable(groups[els[0].index]);},
+        plugins:{legend:{position:'bottom',labels:{font:{size:11}}},tooltip:{callbacks:{label:ctx=>' '+fmtMoney2(ctx.raw)}}},cutout:'65%'}});
+    }
+
+    // ── Modal: category drill-down ────────────────────────────
+    function openCategoryDetail(categoryName) {
+      const amounts = monthData.map(m=>m.categories.find(c=>c.name===categoryName)?.amount??0);
+      const catObj  = monthData.flatMap(m=>m.categories).find(c=>c.name===categoryName);
+      const group   = catObj?.group ?? '';
+      const color   = groupColor(group);
+      currentCatName  = categoryName;
+      currentCatId    = catObj?.id ?? '';
+      currentCatColor = color;
+      currentCatGroup = group;
+      catDetailMonthIdx = currentMonthIndex;
+
+      const active=amounts.filter(a=>a>0), total=amounts.reduce((s,a)=>s+a,0);
+      const avg=active.length?total/active.length:0;
+      const maxAmt=Math.max(...amounts), peakLabel=monthData[amounts.indexOf(maxAmt)]?.shortLabel??'—';
+      const thisMonthAmt = amounts[currentMonthIndex] ?? 0;
+      const periodSel = document.getElementById('periodSelect');
+      const periodLabel = periodSel.options[periodSel.selectedIndex].text;
+
+      document.getElementById('breadcrumbMonth').textContent = monthData[currentMonthIndex].label;
+      document.getElementById('breadcrumbCat').textContent   = categoryName;
+      document.getElementById('modalTitle').textContent      = categoryName;
+      // Header shows the specific month the user drilled from, not the period total
+      document.getElementById('modalTotal').innerHTML =
+        `<span class="group-badge" style="background:${color}18;color:${color};font-size:0.8rem">${group}</span>
+         &nbsp;${monthData[currentMonthIndex].label}: <strong>${fmtMoney2(thisMonthAmt)}</strong>`;
+
+      document.getElementById('catStats').innerHTML = `
+        <div class="cat-stat"><div class="cs-label">${periodLabel} Total</div><div class="cs-value">${fmtMoney2(total)}</div></div>
+        <div class="cat-stat"><div class="cs-label">Avg / Active Month</div><div class="cs-value">${fmtMoney2(avg)}</div></div>
+        <div class="cat-stat"><div class="cs-label">Peak Month</div><div class="cs-value">${peakLabel} — ${fmtMoney(maxAmt)}</div></div>`;
+
+      renderCatMonthTable(amounts, catDetailMonthIdx);
+
+      if(catTrendChart) catTrendChart.destroy();
+      catTrendChart=new Chart(document.getElementById('categoryTrendChart'),{type:'bar',data:{
+        labels:monthData.map(m=>m.shortLabel),
+        datasets:[{data:amounts,backgroundColor:amounts.map((_,i)=>i===currentMonthIndex?color:color+'70'),borderRadius:6,borderSkipped:false}]
+      },options:{
+        onClick:(e,els)=>{ if(els.length) selectCatMonth(els[0].index); },
+        plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>' '+fmtMoney2(ctx.raw)}}},
+        scales:{y:scaleY}
+      }});
+
+      document.getElementById('catMonthPrev').disabled = catDetailMonthIdx === 0;
+      document.getElementById('catMonthNext').disabled = catDetailMonthIdx === monthData.length - 1;
+
+      document.getElementById('modalMonthNavWrap').style.display = 'none';
+      document.getElementById('monthView').style.display='none';
+      document.getElementById('categoryView').style.display='block';
+
+      loadTransactions(catDetailMonthIdx);
+      prefetchAdjacentTransactions(currentCatId, catDetailMonthIdx); // background
+    }
+
+    // Silently prefetch the months on either side so clicking prev/next is instant
+    async function prefetchAdjacentTransactions(catId, monthIdx) {
+      const neighbors = [monthIdx - 1, monthIdx + 1].filter(i => i >= 0 && i < monthData.length);
+      for (const i of neighbors) {
+        const key = ck('t', activeBudget.id, catId, monthData[i].month);
+        if (!cacheGet(key)) {
+          try { await fetchCategoryTransactions(catId, monthData[i].month, { quiet: true }); } catch {}
+        }
+      }
+    }
+
+    function renderCatMonthTable(amounts, activeIdx) {
+      document.getElementById('catMonthTable').innerHTML = amounts.map((amt,i)=>{
+        const prior=i>0?amounts[i-1]:null;
+        let badge='';
+        if(prior!==null&&prior>0&&amt>0){
+          const p=((amt-prior)/prior*100).toFixed(0);
+          badge=amt>prior?`<span class="trend-badge trend-up">▲${p}%</span>`
+               :amt<prior?`<span class="trend-badge trend-down">▼${Math.abs(p)}%</span>`
+               :`<span class="trend-badge trend-flat">—</span>`;
+        } else if(prior!==null&&prior===0&&amt>0) badge=`<span class="trend-badge trend-up">new</span>`;
+          else if(prior!==null&&prior>0&&amt===0) badge=`<span class="trend-badge trend-flat">none</span>`;
+        const amtStr=amt===0?'<span class="zero">—</span>':fmtMoney2(amt);
+        return `<tr class="${i===activeIdx?'active-month':''}" onclick="selectCatMonth(${i})">
+          <td>${monthData[i].shortLabel}</td><td class="amt">${amtStr}</td><td>${badge}</td></tr>`;
+      }).join('');
+    }
+
+    async function selectCatMonth(idx) {
+      catDetailMonthIdx=idx; currentMonthIndex=idx;
+      const amounts=monthData.map(m=>m.categories.find(c=>c.name===currentCatName)?.amount??0);
+      renderCatMonthTable(amounts, idx);
+      // Update header to reflect newly selected month
+      const thisAmt = amounts[idx] ?? 0;
+      document.getElementById('breadcrumbMonth').textContent = monthData[idx].label;
+      document.getElementById('modalTotal').innerHTML =
+        `<span class="group-badge" style="background:${currentCatColor}18;color:${currentCatColor};font-size:0.8rem">${currentCatGroup}</span>
+         &nbsp;${monthData[idx].label}: <strong>${fmtMoney2(thisAmt)}</strong>`;
+      document.getElementById('catMonthPrev').disabled = idx === 0;
+      document.getElementById('catMonthNext').disabled = idx === monthData.length - 1;
+      // Update chart bar highlight to reflect newly selected month
+      if (catTrendChart) {
+        catTrendChart.data.datasets[0].backgroundColor = amounts.map((_,i)=>i===idx?currentCatColor:currentCatColor+'70');
+        catTrendChart.update();
+      }
+      await loadTransactions(idx);
+      prefetchAdjacentTransactions(currentCatId, idx);
+    }
+
+    async function loadTransactions(monthIdx) {
+      const m = monthData[monthIdx];
+      document.getElementById('txnTitle').textContent = `Transactions — ${m.label}`;
+      if (!currentCatId) { document.getElementById('txnContent').innerHTML='<p class="txn-empty">Category ID unavailable.</p>'; return; }
+      document.getElementById('txnContent').innerHTML='<div class="spinner sm"></div>';
+      try {
+        const txns = await fetchCategoryTransactions(currentCatId, m.month);
+        renderTransactions(txns);
+      } catch(err) {
+        document.getElementById('txnContent').innerHTML=`<p style="color:#e53e3e;font-size:0.875rem">Error: ${err.message}</p>`;
+      }
+    }
+
+    function fmtDate(dateStr) {
+      const [y, m, d] = dateStr.split('-');
+      return `${m}/${d}/${y}`;
+    }
+
+    function renderTransactions(txns) {
+      if (!txns.length) {
+        document.getElementById('txnContent').innerHTML = '<p class="txn-empty">No transactions this month.</p>';
+        return;
+      }
+      const sorted = [...txns].sort((a, b) => b.date.localeCompare(a.date));
+      document.getElementById('txnContent').innerHTML = `
+        <table class="txn-table">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Account</th>
+              <th>Payee</th>
+              <th>Memo</th>
+              <th class="amount">Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${sorted.map(t => {
+              const amt = Math.abs(t.amount) / 1000;
+              const cleared = t.cleared === 'cleared' || t.cleared === 'reconciled';
+              const memo = t.memo ? `<span class="txn-memo">${t.memo}</span>` : '';
+              return `<tr class="${cleared ? '' : 'uncleared'}">
+                <td class="txn-date">${fmtDate(t.date)}</td>
+                <td class="txn-account">${t.account_name || '—'}</td>
+                <td class="txn-payee">${t.payee_name || '—'}</td>
+                <td class="txn-memo-cell">${memo}</td>
+                <td class="amount">${fmtMoney2(amt)}</td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+        <p class="txn-legend">* <span style="color:#a0aec0">Grey rows</span> are pending — not yet cleared by your bank.</p>`;
+    }
+
+    // ── Boot ─────────────────────────────────────────────────
+    (async function init() {
+      const token = findToken();
+      if (!token) { showScreen('setupScreen'); return; }
+      showSetupStatus('Connecting to YNAB…');
+      showScreen('setupScreen');
+      try {
+        await connectWithToken(token);
+      } catch (err) {
+        // ynabFetch handles 401 via showExpired(); catch anything else
+        if (apiKey) {
+          showScreen('setupScreen');
+          showSetupError('Connection failed: ' + err.message);
+        }
+      }
+    })();
+  </script>
+</body>
+</html>
