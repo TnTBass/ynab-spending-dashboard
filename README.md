@@ -65,14 +65,15 @@ This runs the actual Cloudflare Worker on your machine, including the OAuth prox
 1. Register a YNAB OAuth application at <https://app.ynab.com/settings/developer> → **New Application**:
    - Application URL: `http://localhost:3131/`
    - Redirect URI: `http://localhost:3131/oauth/callback`
-2. Copy `.dev.vars.example` to `.dev.vars` and fill in `YNAB_CLIENT_ID` + `YNAB_CLIENT_SECRET` from the OAuth app.
-3. Run:
+2. **Edit `wrangler.jsonc`** — set `vars.YNAB_CLIENT_ID` to your OAuth app's client ID.
+3. **Copy `.dev.vars.example` to `.dev.vars`** and put your `YNAB_CLIENT_SECRET` in it. (The .dev.vars file is gitignored.)
+4. Run:
    ```bash
    npx wrangler dev
    # → http://localhost:3131/
    ```
 
-`.dev.vars` is gitignored. Both `npx` and `wrangler` are downloaded on demand if you don't have them.
+Both `npx` and `wrangler` are downloaded on demand if you don't have them.
 
 ---
 
@@ -83,12 +84,12 @@ This repo deploys as a Cloudflare Worker that serves both static assets and a sm
 1. Register a YNAB OAuth application at <https://app.ynab.com/settings/developer> → **New Application** with a redirect URI matching wherever you'll deploy. The path must be `/oauth/callback`. Examples:
    - `https://your-app.your-account.workers.dev/oauth/callback`
    - `https://your-custom-domain.com/oauth/callback`
-2. In the Cloudflare dashboard: **Workers & Pages** → **Create application** → **Connect to Git** → pick your fork.
-3. Leave **Build command** blank. Leave **Deploy command** as the default `npx wrangler deploy`.
-4. After the first deploy, go to the Worker's **Settings → Variables and Secrets** and add:
-   - `YNAB_CLIENT_ID` (Variable, type "Plain text") — the public client ID from your OAuth app
-   - `YNAB_CLIENT_SECRET` (Secret, type "Encrypt") — the secret from your OAuth app
-5. Trigger a redeploy so the Worker picks up the new env. Your dashboard is now live.
+2. **Edit `wrangler.jsonc`** — replace the `YNAB_CLIENT_ID` value in the `vars` block with your own OAuth app's client ID. (It's not secret, so it lives in source. The placeholder value is for the canonical `ynab-dashboard.org` deployment and won't work with your redirect URI.)
+3. In the Cloudflare dashboard: **Workers & Pages** → **Create application** → **Connect to Git** → pick your fork.
+4. Leave **Build command** blank. Leave **Deploy command** as the default `npx wrangler deploy`.
+5. After the first deploy, go to the Worker's **Settings → Variables and Secrets** and add:
+   - `YNAB_CLIENT_SECRET` (Secret, type "Encrypt") — the secret from your OAuth app. **This must be a Secret, never a Variable**, and must never be committed to git.
+6. Trigger a redeploy so the Worker picks up the new secret. Your dashboard is now live.
 
 To wire up a custom domain, add it under the Worker's **Settings → Domains & Routes** — Cloudflare auto-provisions DNS and SSL if the domain is managed by your account.
 

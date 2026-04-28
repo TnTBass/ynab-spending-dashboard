@@ -23,5 +23,18 @@
   },
   "dev": {
     "port": 3131
+  },
+  /**
+   * Public OAuth client ID. Lives in source because:
+   *   1. It's not secret — appears in every browser's OAuth redirect URL anyway.
+   *   2. Cloudflare's CI deploys can wipe dashboard-set Variables; putting it
+   *      here makes that impossible.
+   *
+   * If you fork this repo and deploy your own copy, replace this with YOUR
+   * own OAuth app's client ID from https://app.ynab.com/settings/developer.
+   * The value below is for the canonical ynab-dashboard.org deployment.
+   */
+  "vars": {
+    "YNAB_CLIENT_ID": "B3MHAYe4ZMeFmIfbjv9nCVgjymxeNXFfF90ECKXnxt4"
   }
 }

@@ -1,11 +1,12 @@
-# Local dev variables for `npx wrangler dev`.
-# Copy this file to .dev.vars (which is gitignored) and fill in real values.
+# Local dev secrets for `npx wrangler dev`.
+# Copy this file to .dev.vars (which is gitignored) and fill in the secret.
 #
-# In production, set these as Variables/Secrets in the Cloudflare dashboard
-# under Workers > ynab-spending-dashboard > Settings > Variables and Secrets.
+# YNAB_CLIENT_ID lives in wrangler.jsonc (it's not secret — it appears in
+# every browser's OAuth redirect URL anyway). If you fork, override it
+# there for local dev too.
+#
+# In production, YNAB_CLIENT_SECRET goes in the Cloudflare dashboard as
+# a Secret under Workers > ynab-spending-dashboard > Settings >
+# Variables and Secrets. Never commit the real value to git.
 
-# Public client ID from your YNAB OAuth application
-YNAB_CLIENT_ID=
-
-# Secret from your YNAB OAuth application — keep this out of git
 YNAB_CLIENT_SECRET=
