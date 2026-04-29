@@ -150,6 +150,11 @@
 
     /* ── No-capture: excluded from html2canvas PDF snapshots ── */
     /* (class applied to button rows so they don't appear in the PDF) */
+
+    /* ── Footer ─────────────────────────────────────────── */
+    .site-footer { padding: 24px 32px; max-width: 900px; margin: 0 auto; font-size: 0.72rem; color: #a0aec0; text-align: center; line-height: 1.5; }
+    .site-footer a { color: #718096; text-decoration: underline; }
+    .site-footer a:hover { color: #4299e1; }
   </style>
 </head>
 <body>
@@ -319,6 +324,12 @@
       </div>
     </div>
   </div>
+
+  <!-- ── Footer (disclaimer) ─────────────────────────────── -->
+  <footer class="site-footer no-capture">
+    <p>We are not affiliated, associated, or in any way officially connected with YNAB or any of its subsidiaries or affiliates. The official YNAB website can be found at <a href="https://www.ynab.com" target="_blank" rel="noopener noreferrer">https://www.ynab.com</a>.</p>
+    <p style="margin-top:6px">The names YNAB and You Need A Budget, as well as related names, tradenames, marks, trademarks, emblems, and images are registered trademarks of YNAB.</p>
+  </footer>
 
   <script>
     // ── Helpers for setup screen feedback ────────────────────
