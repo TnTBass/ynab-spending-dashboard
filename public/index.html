@@ -158,6 +158,11 @@
     .top-bar .subtitle { font-size: 0.85rem; color: #718096; margin-top: 3px; }
     .top-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
     .top-actions select { padding: 7px 10px; border: 1.5px solid #e2e8f0; border-radius: 8px; font-size: 0.85rem; background: white; cursor: pointer; color: #4a5568; }
+    .top-actions input[type="month"] { padding: 6px 8px; border: 1.5px solid #e2e8f0; border-radius: 8px; font-size: 0.82rem; background: white; color: #4a5568; font-family: inherit; }
+    .top-actions .custom-range { display: none; align-items: center; gap: 4px; font-size: 0.78rem; color: #a0aec0; }
+    .top-actions .custom-range.active { display: inline-flex; }
+    .top-actions .toggle-row { display: inline-flex; align-items: center; gap: 6px; font-size: 0.82rem; color: #4a5568; cursor: pointer; user-select: none; padding: 6px 4px; }
+    .top-actions .toggle-row input { cursor: pointer; }
     .btn-secondary { padding: 7px 14px; border: 1.5px solid #e2e8f0; border-radius: 8px; font-size: 0.85rem; background: white; cursor: pointer; color: #4a5568; transition: all 0.15s; }
     .btn-secondary:hover { border-color: #4299e1; color: #4299e1; }
 
@@ -233,6 +238,11 @@
     .trend-up { background: #fff5f5; color: #c53030; } .trend-down { background: #f0fff4; color: #276749; } .trend-flat { background: #f7fafc; color: #718096; }
     .txn-section { border-top: 1px solid #e2e8f0; padding-top: 20px; }
     .txn-section h3 { font-size: 0.9rem; font-weight: 600; color: #4a5568; margin-bottom: 12px; }
+    .txn-mode-tabs { display: flex; gap: 6px; margin-bottom: 12px; }
+    .txn-mode-tab { padding: 4px 12px; border-radius: 16px; font-size: 0.78rem; font-weight: 600; cursor: pointer; border: 1.5px solid #e2e8f0; background: white; color: #718096; transition: all 0.15s; }
+    .txn-mode-tab:hover { border-color: #4299e1; color: #4299e1; }
+    .txn-mode-tab.active { background: #ebf8ff; color: #2b6cb0; border-color: #bee3f8; }
+    .txn-month-cell { white-space: nowrap; color: #718096; font-size: 0.8rem; }
     .txn-empty { color: #a0aec0; font-size: 0.875rem; padding: 8px 0; }
     .txn-legend { font-size: 0.75rem; color: #718096; margin-top: 8px; }
     .txn-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
@@ -394,9 +404,20 @@
           <option value="6" selected>Last 6 months</option>
           <option value="12">Last 12 months</option>
           <option value="ytd">This year</option>
+          <option value="custom">Custom…</option>
         </select>
+        <span id="customRangeWrap" class="custom-range">
+          <input type="month" id="customStart" onchange="handleCustomRangeChange()" />
+          <span>→</span>
+          <input type="month" id="customEnd" onchange="handleCustomRangeChange()" />
+        </span>
+        <label class="toggle-row" title="Include categories you've hidden in YNAB">
+          <input type="checkbox" id="showHiddenChk" onchange="handleShowHidden()" />
+          Show hidden
+        </label>
         <button class="btn-secondary" onclick="refreshData()">↻ Refresh</button>
         <span id="refreshStatus" style="font-size:0.78rem;color:#a0aec0;min-width:80px"></span>
+        <button id="dashCsvBtn" class="btn-secondary" onclick="downloadCSV()">⬇ CSV</button>
         <button id="dashPdfBtn" class="btn-secondary" onclick="downloadPDF()">⬇ PDF</button>
         <button class="btn-secondary" onclick="showBudgetPicker()">⚙ Switch budget</button>
         <button class="btn-secondary" onclick="showSetup()">⏏ Sign out</button>
@@ -456,6 +477,7 @@
           </div>
         </div>
         <div class="no-capture" style="display:flex;gap:8px">
+          <button id="modalCsvBtn" class="modal-close" onclick="downloadCSV()">⬇ CSV</button>
           <button id="modalPdfBtn" class="modal-close" onclick="downloadPDF()">⬇ PDF</button>
           <button class="modal-close" onclick="closeModal()">✕ Close</button>
         </div>
@@ -497,9 +519,13 @@
             </table>
           </div>
         </div>
-        <!-- Transactions for selected month -->
+        <!-- Transactions for selected month or all months in period -->
         <div class="txn-section">
           <h3 id="txnTitle">Transactions</h3>
+          <div class="txn-mode-tabs no-capture">
+            <button type="button" class="txn-mode-tab active" id="txnTabMonth" onclick="setTxnMode('month')">This month</button>
+            <button type="button" class="txn-mode-tab" id="txnTabAll" onclick="setTxnMode('all')">All months in period</button>
+          </div>
           <div id="txnContent"></div>
         </div>
       </div>
@@ -554,7 +580,17 @@
     const PKCE_STATE_KEY    = 'ynab_pkce_state';
     // Loaded from /api/config at sign-in time, cached for the session
     let   YNAB_CLIENT_ID    = '';
-    const SKIP_GROUPS = new Set(['Internal Master Category', 'Credit Card Payments', 'Hidden Categories']);
+    // 'Internal Master Category' (Inflow: Ready to Assign) and 'Credit Card Payments'
+    // are always skipped — they aren't user-facing spending categories and would
+    // double-count if surfaced. 'Hidden Categories' is user-controlled via the
+    // "Show hidden" toggle in the top bar.
+    const SYSTEM_SKIP_GROUPS = new Set(['Internal Master Category', 'Credit Card Payments']);
+    let showHidden = false;
+    function isSkippedGroup(name) {
+      if (SYSTEM_SKIP_GROUPS.has(name)) return true;
+      if (!showHidden && name === 'Hidden Categories') return true;
+      return false;
+    }
     const COLOR_PALETTE = ['#9f7aea','#48bb78','#ed8936','#4299e1','#fc8181','#38b2ac','#f687b3','#ecc94b','#667eea','#f6ad55'];
     const groupColorMap = {};
     function groupColor(name) {
@@ -795,6 +831,10 @@
     let currentMonthIndex = 0, currentGroupFilter = 'all';
     let catDetailMonthIdx = 0, currentCatName = '', currentCatId = '', currentCatColor = '', currentCatGroup = '';
     let donutChart = null, catTrendChart = null;
+    // 'month' = txns for catDetailMonthIdx only; 'all' = every month in the loaded period
+    let txnViewMode = 'month';
+    // Snapshot of the currently rendered transactions list, read by downloadCSV()
+    let lastRenderedTxns = [];
 
     // ── YNAB API ─────────────────────────────────────────────
     // quiet:true suppresses showExpired() for background calls. A silent
@@ -865,11 +905,32 @@
       const now = new Date(), dates = [];
       if (period === 'ytd') {
         for (let i = 0; i <= now.getMonth(); i++) dates.push(toYNABMonth(new Date(now.getFullYear(), i, 1)));
+      } else if (period === 'custom') {
+        const r = readCustomRange();
+        if (!r) return [];
+        const [sy, sm] = r.start.split('-').map(Number);
+        const [ey, em] = r.end.split('-').map(Number);
+        let y = sy, m = sm;
+        // Cap at 60 months to keep API load sane if a user picks a huge range
+        for (let i = 0; i < 60 && (y < ey || (y === ey && m <= em)); i++) {
+          dates.push(toYNABMonth(new Date(y, m - 1, 1)));
+          m++; if (m > 12) { m = 1; y++; }
+        }
       } else {
         const n = parseInt(period);
         for (let i = n-1; i >= 0; i--) dates.push(toYNABMonth(new Date(now.getFullYear(), now.getMonth()-i, 1)));
       }
       return dates;
+    }
+
+    // Custom-range state lives in the two <input type="month"> values; a tiny
+    // helper validates and returns them as 'YYYY-MM' strings (or null if either is missing).
+    function readCustomRange() {
+      const s = document.getElementById('customStart')?.value;
+      const e = document.getElementById('customEnd')?.value;
+      if (!s || !e) return null;
+      // Normalize: if start > end, swap so the user can pick in any order
+      return s <= e ? { start: s, end: e } : { start: e, end: s };
     }
     function fmtMonth(s, short = false) {
       const d = new Date(s + 'T12:00:00Z');
@@ -883,7 +944,7 @@
       const categories = [], groupTotals = {};
       let total = 0;
       for (const cat of detail.categories ?? []) {
-        if (SKIP_GROUPS.has(cat.category_group_name) || cat.deleted || cat.activity >= 0) continue;
+        if (isSkippedGroup(cat.category_group_name) || cat.deleted || cat.activity >= 0) continue;
         const amount = Math.abs(cat.activity) / 1000;
         categories.push({ id: cat.id, name: cat.name, group: cat.category_group_name, amount });
         groupTotals[cat.category_group_name] = (groupTotals[cat.category_group_name] || 0) + amount;
@@ -977,12 +1038,44 @@
       }
     }
     async function handlePeriodChange() {
+      const sel = document.getElementById('periodSelect');
+      const wrap = document.getElementById('customRangeWrap');
+      if (sel.value === 'custom') {
+        // Seed the inputs the first time custom is selected: end = current month,
+        // start = 5 months earlier (matches the "Last 6 months" default feel).
+        const startInp = document.getElementById('customStart');
+        const endInp   = document.getElementById('customEnd');
+        if (!startInp.value || !endInp.value) {
+          const now = new Date();
+          const end = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+          const startD = new Date(now.getFullYear(), now.getMonth() - 5, 1);
+          const start = `${startD.getFullYear()}-${String(startD.getMonth()+1).padStart(2,'0')}`;
+          startInp.value = start;
+          endInp.value   = end;
+        }
+        wrap.classList.add('active');
+      } else {
+        wrap.classList.remove('active');
+      }
       if (allCached(datesForPeriod())) {
         // All months in cache — swap data and re-render without any loading screen
         await loadData({ spinner: false }); renderDashboard();
       } else {
         await refreshData();
       }
+    }
+    async function handleCustomRangeChange() {
+      // Same flow as period change, but only relevant when custom is active
+      if (document.getElementById('periodSelect').value !== 'custom') return;
+      if (allCached(datesForPeriod())) { await loadData({ spinner: false }); renderDashboard(); }
+      else { await refreshData(); }
+    }
+    async function handleShowHidden() {
+      showHidden = document.getElementById('showHiddenChk').checked;
+      // Cached month details still hold the raw 'Hidden Categories' rows; we
+      // only need to re-process them through processMonth, no re-fetch.
+      try { await loadData({ spinner: false }); renderDashboard(); }
+      catch (err) { console.warn('Show-hidden toggle:', err); }
     }
     // ── PDF colour-boost helpers ─────────────────────────────────────────────
     // html2canvas composites semi-transparent fills against white, making them
@@ -1156,6 +1249,74 @@
         btns.forEach(b => { b.textContent = '⬇ PDF'; b.disabled = false; });
       }
     }
+    // ── CSV export ──────────────────────────────────────────
+    // Context-aware sibling of downloadPDF(). Mirrors whichever view is open:
+    //   dashboard → flattened month/group/category/amount across loaded period
+    //   month modal → that month's category breakdown
+    //   category drill-down → the rendered transactions (single or all-months)
+    function csvEscape(v) {
+      if (v === null || v === undefined) return '';
+      const s = String(v);
+      // RFC 4180: quote if contains comma, quote, CR, or LF; escape inner quotes by doubling
+      return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    }
+    function csvFromRows(rows) {
+      return rows.map(r => r.map(csvEscape).join(',')).join('\r\n');
+    }
+    function triggerCsvDownload(content, filename) {
+      // Prepend BOM so Excel detects UTF-8 (and renders €, £, etc. correctly)
+      const blob = new Blob(['﻿' + content], { type: 'text/csv;charset=utf-8' });
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement('a');
+      a.href = url; a.download = filename;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 0);
+    }
+    function downloadCSV() {
+      const modalOpen = document.getElementById('modalOverlay').classList.contains('open');
+      const catView   = document.getElementById('categoryView').style.display === 'block';
+      const state     = !modalOpen ? 'dashboard' : catView ? 'category' : 'month';
+      const bname     = activeBudget?.name ?? 'YNAB';
+      const safe      = s => s.replace(/[^\w\s\-—.]/g, '').replace(/\s+/g, '_');
+
+      let rows, filenameStem;
+      if (state === 'dashboard') {
+        // One row per (month, category). Months with no spending still get a
+        // placeholder row so a zero-spend period isn't silently dropped.
+        rows = [['Month', 'Group', 'Category', 'Amount']];
+        for (const m of monthData) {
+          if (!m.categories.length) { rows.push([m.label, '', '', '0.00']); continue; }
+          for (const c of m.categories) rows.push([m.label, c.group, c.name, c.amount.toFixed(2)]);
+        }
+        const sel = document.getElementById('periodSelect');
+        filenameStem = `${bname}_${sel.options[sel.selectedIndex].text}`;
+      } else if (state === 'month') {
+        const d = monthData[currentMonthIndex];
+        rows = [['Category', 'Group', 'Amount']];
+        for (const c of d.categories) rows.push([c.name, c.group, c.amount.toFixed(2)]);
+        rows.push(['Total', '', d.total.toFixed(2)]);
+        filenameStem = `${bname}_${d.label}`;
+      } else {
+        // Category view — export currently-rendered transactions
+        const showMonth = txnViewMode === 'all';
+        const header = ['Date'];
+        if (showMonth) header.unshift('Month');
+        header.push('Account', 'Payee', 'Memo', 'Cleared', 'Amount');
+        rows = [header];
+        const sorted = [...lastRenderedTxns].sort((a, b) => b.date.localeCompare(a.date));
+        for (const t of sorted) {
+          const amt = (Math.abs(t.amount) / 1000).toFixed(2);
+          const cleared = (t.cleared === 'cleared' || t.cleared === 'reconciled') ? 'cleared' : 'pending';
+          const row = [t.date, t.account_name || '', t.payee_name || '', t.memo || '', cleared, amt];
+          if (showMonth) row.unshift(t._bucketLabel || '');
+          rows.push(row);
+        }
+        const scopeLabel = txnViewMode === 'all' ? 'all-months' : monthData[catDetailMonthIdx].label;
+        filenameStem = `${bname}_${currentCatName}_${scopeLabel}`;
+      }
+      triggerCsvDownload(csvFromRows(rows), safe(filenameStem) + '.csv');
+    }
+
     function setRefreshStatus(state) {
       const el = document.getElementById('refreshStatus');
       if (el) el.textContent = state === 'updating' ? '● Updating…' : '';
@@ -1408,6 +1569,11 @@
       document.getElementById('monthView').style.display='none';
       document.getElementById('categoryView').style.display='block';
 
+      // Always start a fresh drill-down in single-month mode
+      txnViewMode = 'month';
+      document.getElementById('txnTabMonth').classList.add('active');
+      document.getElementById('txnTabAll').classList.remove('active');
+
       loadTransactions(catDetailMonthIdx);
       prefetchAdjacentTransactions(currentCatId, catDetailMonthIdx); // background
     }
@@ -1462,16 +1628,37 @@
     }
 
     async function loadTransactions(monthIdx) {
-      const m = monthData[monthIdx];
-      document.getElementById('txnTitle').textContent = `Transactions — ${m.label}`;
       if (!currentCatId) { document.getElementById('txnContent').innerHTML='<p class="txn-empty">Category ID unavailable.</p>'; return; }
       document.getElementById('txnContent').innerHTML='<div class="spinner sm"></div>';
-      try {
-        const txns = await fetchCategoryTransactions(currentCatId, m.month);
-        renderTransactions(txns);
-      } catch(err) {
-        document.getElementById('txnContent').innerHTML=`<p style="color:#e53e3e;font-size:0.875rem">Error: ${err.message}</p>`;
+      if (txnViewMode === 'all') {
+        document.getElementById('txnTitle').textContent = 'Transactions — all months in period';
+        try {
+          const lists = await Promise.all(monthData.map(m => fetchCategoryTransactions(currentCatId, m.month)));
+          // Tag each txn with its month-bucket so the Month column reflects what
+          // the dashboard considers "this month" (matches the per-month totals
+          // shown in the bar chart, even if the txn date crosses a boundary).
+          const all = lists.flatMap((list, i) => list.map(t => ({ ...t, _bucketLabel: monthData[i].shortLabel })));
+          renderTransactions(all, { showMonth: true });
+        } catch(err) {
+          document.getElementById('txnContent').innerHTML=`<p style="color:#e53e3e;font-size:0.875rem">Error: ${err.message}</p>`;
+        }
+      } else {
+        const m = monthData[monthIdx];
+        document.getElementById('txnTitle').textContent = `Transactions — ${m.label}`;
+        try {
+          const txns = await fetchCategoryTransactions(currentCatId, m.month);
+          renderTransactions(txns, { showMonth: false });
+        } catch(err) {
+          document.getElementById('txnContent').innerHTML=`<p style="color:#e53e3e;font-size:0.875rem">Error: ${err.message}</p>`;
+        }
       }
+    }
+    async function setTxnMode(mode) {
+      if (mode === txnViewMode) return;
+      txnViewMode = mode;
+      document.getElementById('txnTabMonth').classList.toggle('active', mode === 'month');
+      document.getElementById('txnTabAll').classList.toggle('active', mode === 'all');
+      await loadTransactions(catDetailMonthIdx);
     }
 
     function fmtDate(dateStr) {
@@ -1479,9 +1666,11 @@
       return `${m}/${d}/${y}`;
     }
 
-    function renderTransactions(txns) {
+    function renderTransactions(txns, opts = {}) {
+      const { showMonth = false } = opts;
+      lastRenderedTxns = txns;
       if (!txns.length) {
-        document.getElementById('txnContent').innerHTML = '<p class="txn-empty">No transactions this month.</p>';
+        document.getElementById('txnContent').innerHTML = `<p class="txn-empty">No transactions ${showMonth ? 'in this period' : 'this month'}.</p>`;
         return;
       }
       const sorted = [...txns].sort((a, b) => b.date.localeCompare(a.date));
@@ -1489,6 +1678,7 @@
         <table class="txn-table">
           <thead>
             <tr>
+              ${showMonth ? '<th>Month</th>' : ''}
               <th>Date</th>
               <th>Account</th>
               <th>Payee</th>
@@ -1502,6 +1692,7 @@
               const cleared = t.cleared === 'cleared' || t.cleared === 'reconciled';
               const memo = t.memo ? `<span class="txn-memo">${t.memo}</span>` : '';
               return `<tr class="${cleared ? '' : 'uncleared'}">
+                ${showMonth ? `<td class="txn-month-cell">${t._bucketLabel || ''}</td>` : ''}
                 <td class="txn-date">${fmtDate(t.date)}</td>
                 <td class="txn-account">${t.account_name || '—'}</td>
                 <td class="txn-payee">${t.payee_name || '—'}</td>
