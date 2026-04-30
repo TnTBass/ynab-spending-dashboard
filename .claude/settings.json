@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__Claude_Preview__preview_screenshot",
+      "mcp__Claude_Preview__preview_start",
+      "mcp__Claude_Preview__preview_stop",
+      "mcp__Claude_Preview__preview_console_logs",
+      "mcp__Claude_Preview__preview_list",
+      "mcp__Claude_Preview__preview_snapshot",
+      "mcp__ynab__get_spending_by_category",
+      "mcp__ynab__get_transactions_by_account",
+      "mcp__ynab__list_accounts",
+      "mcp__ynab__list_months",
+      "mcp__ynab__list_categories",
+      "mcp__ynab__list_budgets",
+      "mcp__unifi-network__unifi_tool_index",
+      "mcp__Claude_in_Chrome__read_console_messages",
+      "mcp__Claude_in_Chrome__tabs_context_mcp",
+      "mcp__ccd_session__mark_chapter"
+    ]
+  }
+}

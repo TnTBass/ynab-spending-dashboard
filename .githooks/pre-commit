@@ -1,0 +1,15 @@
+#!/bin/sh
+# Validate the inline JS in public/index.html parses, but only when that file
+# is part of the staged changeset. Other commits skip the check and exit fast.
+#
+# If node isn't on PATH (e.g. fresh machine, Cloudflare auto-deploys remotely),
+# this hook degrades to a one-line notice and lets the commit through. Install
+# node locally to activate the gate — no further setup needed.
+if git diff --cached --name-only --diff-filter=ACMR | grep -qx 'public/index.html'; then
+  if ! command -v node >/dev/null 2>&1; then
+    echo "[pre-commit] node not found — skipping public/index.html JS syntax check (install node to activate)" >&2
+    exit 0
+  fi
+  exec node scripts/check-html-js.mjs
+fi
+exit 0
