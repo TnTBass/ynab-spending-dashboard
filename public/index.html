@@ -303,6 +303,26 @@
       font-weight: 400; font-size: 0.85rem; color: #4a5568; cursor: pointer;
     }
     .search-filters .checkbox-list input { width: auto; }
+    .search-filters .checkbox-list.scrollable {
+      max-height: 180px; overflow-y: auto;
+      border: 1px solid #edf2f7; border-radius: 6px;
+      padding: 6px 8px; gap: 4px;
+    }
+    .search-filters .facet-bar {
+      display: flex; align-items: center; gap: 8px;
+      margin: 4px 0 6px; font-size: 0.72rem; color: #a0aec0;
+    }
+    .search-filters .facet-bar .facet-clear {
+      background: none; border: none; padding: 0; cursor: pointer;
+      color: #4299e1; font-size: 0.72rem; font-family: inherit;
+    }
+    .search-filters .facet-bar .facet-clear[disabled] {
+      color: #cbd5e0; cursor: default;
+    }
+    .search-filters input.filter-search { font-size: 0.78rem; padding: 5px 8px; }
+    .search-filters .facet-empty {
+      font-size: 0.78rem; color: #a0aec0; padding: 4px 0; margin: 0;
+    }
     .search-results {
       background: white; border-radius: 12px; padding: 20px;
       box-shadow: 0 1px 4px rgba(0,0,0,0.08); min-height: 360px;
@@ -583,6 +603,26 @@
             <label><input type="checkbox" id="searchClCleared"    onchange="onSearchInput()" /> Cleared</label>
             <label><input type="checkbox" id="searchClReconciled" onchange="onSearchInput()" /> Reconciled</label>
           </div>
+        </div>
+
+        <h3>Category</h3>
+        <div class="field">
+          <input type="text" class="filter-search" id="searchCatQuery" placeholder="Filter categories…" oninput="renderSearchFacet('cat')" />
+          <div class="facet-bar">
+            <span id="searchCatCount">All</span>
+            <button type="button" class="facet-clear" id="searchCatClear" onclick="clearSearchFacet('cat')">Clear selection</button>
+          </div>
+          <div class="checkbox-list scrollable" id="searchCatList"></div>
+        </div>
+
+        <h3>Account</h3>
+        <div class="field">
+          <input type="text" class="filter-search" id="searchAcctQuery" placeholder="Filter accounts…" oninput="renderSearchFacet('acct')" />
+          <div class="facet-bar">
+            <span id="searchAcctCount">All</span>
+            <button type="button" class="facet-clear" id="searchAcctClear" onclick="clearSearchFacet('acct')">Clear selection</button>
+          </div>
+          <div class="checkbox-list scrollable" id="searchAcctList"></div>
         </div>
       </aside>
 
@@ -1203,8 +1243,11 @@
       dateFrom: '', dateTo: '',
       amountMin: '', amountMax: '',
       cleared: { uncleared: true, cleared: true, reconciled: true },
+      categoryIds: new Set(),  // empty = no filter
+      accountIds:  new Set(),  // empty = no filter
     };
     let lastSearchResults = [];
+    let searchFacetData = { categories: [], accounts: [] };
     const SEARCH_RENDER_LIMIT = 500;
 
     function defaultSearchDateRange() {
@@ -1226,7 +1269,10 @@
       const { start, end } = defaultSearchDateRange();
       searchFilters.dateFrom = start;
       searchFilters.dateTo   = end;
+      buildSearchFacets();
       applySearchFiltersToInputs();
+      renderSearchFacet('cat');
+      renderSearchFacet('acct');
       runSearch();
       showScreen('searchScreen');
     }
@@ -1268,8 +1314,16 @@
         dateFrom: start, dateTo: end,
         amountMin: '', amountMax: '',
         cleared: { uncleared: true, cleared: true, reconciled: true },
+        categoryIds: new Set(),
+        accountIds:  new Set(),
       };
+      const catQ  = document.getElementById('searchCatQuery');
+      const acctQ = document.getElementById('searchAcctQuery');
+      if (catQ)  catQ.value  = '';
+      if (acctQ) acctQ.value = '';
       applySearchFiltersToInputs();
+      renderSearchFacet('cat');
+      renderSearchFacet('acct');
       runSearch();
     }
 
@@ -1350,6 +1404,8 @@
       const flat = flattenTxnsForSearch(txIndex.values());
 
       const result = [];
+      const catFilterOn  = f.categoryIds.size > 0;
+      const acctFilterOn = f.accountIds.size > 0;
       for (const t of flat) {
         if (f.dateFrom && t.date < f.dateFrom) continue;
         if (f.dateTo   && t.date > f.dateTo)   continue;
@@ -1359,6 +1415,8 @@
         if (minAmt !== null && !isNaN(minAmt) && absAmt < minAmt) continue;
         if (maxAmt !== null && !isNaN(maxAmt) && absAmt > maxAmt) continue;
         if (!f.cleared[t.cleared]) continue;
+        if (catFilterOn  && !f.categoryIds.has(t.category_id || '')) continue;
+        if (acctFilterOn && !f.accountIds.has(t.account_id  || '')) continue;
         result.push(t);
       }
       result.sort((a, b) => b.date.localeCompare(a.date));
@@ -1410,6 +1468,83 @@
         const t = lastSearchResults[+tr.dataset.ri];
         if (t) drillIntoFromSearch(t);
       };
+    }
+
+    // Build the unique category/account option lists from the in-memory tx index.
+    // Re-derived on each openSearch so newly-synced txns surface their facets.
+    function buildSearchFacets() {
+      const catMap  = new Map();
+      const acctMap = new Map();
+      for (const t of txIndex.values()) {
+        if (t.deleted) continue;
+        if (t.account_id && !acctMap.has(t.account_id)) {
+          acctMap.set(t.account_id, { id: t.account_id, name: t.account_name || '(unknown account)' });
+        }
+        const subs = t.subtransactions;
+        if (subs && subs.length > 0) {
+          for (const s of subs) {
+            if (s.deleted) continue;
+            if (s.category_id && !catMap.has(s.category_id)) {
+              catMap.set(s.category_id, { id: s.category_id, name: s.category_name || '(unknown category)' });
+            }
+          }
+        } else if (t.category_id && !catMap.has(t.category_id)) {
+          catMap.set(t.category_id, { id: t.category_id, name: t.category_name || '(unknown category)' });
+        }
+      }
+      const byName = (a, b) => a.name.localeCompare(b.name);
+      searchFacetData.categories = [...catMap.values()].sort(byName);
+      searchFacetData.accounts   = [...acctMap.values()].sort(byName);
+    }
+
+    function _facetParts(which) {
+      return which === 'cat'
+        ? { data: searchFacetData.categories, sel: searchFilters.categoryIds,
+            queryId: 'searchCatQuery',  listId: 'searchCatList',
+            countId: 'searchCatCount',  clearId: 'searchCatClear' }
+        : { data: searchFacetData.accounts,   sel: searchFilters.accountIds,
+            queryId: 'searchAcctQuery', listId: 'searchAcctList',
+            countId: 'searchAcctCount', clearId: 'searchAcctClear' };
+    }
+
+    function renderSearchFacet(which) {
+      const p = _facetParts(which);
+      const listEl = document.getElementById(p.listId);
+      if (!listEl) return;
+      const q = (document.getElementById(p.queryId)?.value || '').trim().toLowerCase();
+      const visible = q ? p.data.filter(d => d.name.toLowerCase().includes(q)) : p.data;
+      if (visible.length === 0) {
+        listEl.innerHTML = `<p class="facet-empty">${q ? 'No matches.' : 'No data yet.'}</p>`;
+      } else {
+        listEl.innerHTML = visible.map(d =>
+          `<label><input type="checkbox" data-id="${escapeHtml(d.id)}" ${p.sel.has(d.id) ? 'checked' : ''}/> ${escapeHtml(d.name)}</label>`
+        ).join('');
+        listEl.onchange = e => {
+          const cb = e.target.closest('input[type=checkbox]');
+          if (!cb) return;
+          const id = cb.dataset.id;
+          if (cb.checked) p.sel.add(id); else p.sel.delete(id);
+          updateFacetCount(which);
+          runSearch();
+        };
+      }
+      updateFacetCount(which);
+    }
+
+    function updateFacetCount(which) {
+      const p = _facetParts(which);
+      const countEl = document.getElementById(p.countId);
+      const clearEl = document.getElementById(p.clearId);
+      if (countEl) countEl.textContent = p.sel.size === 0 ? `All (${p.data.length})` : `${p.sel.size} of ${p.data.length} selected`;
+      if (clearEl) clearEl.disabled = p.sel.size === 0;
+    }
+
+    function clearSearchFacet(which) {
+      const p = _facetParts(which);
+      if (p.sel.size === 0) return;
+      p.sel.clear();
+      renderSearchFacet(which);
+      runSearch();
     }
 
     function escapeHtml(s) {
