@@ -258,6 +258,69 @@
     .txn-table .uncleared td { color: #a0aec0; }
     .txn-table .uncleared .amount { color: #a0aec0; }
 
+    /* ── Search screen ─────────────────────────────────── */
+    #searchScreen { padding: 32px; }
+    .search-layout {
+      display: grid; grid-template-columns: 280px 1fr;
+      gap: 24px; align-items: start;
+    }
+    .search-filters {
+      background: white; border-radius: 12px; padding: 20px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+      position: sticky; top: 16px;
+    }
+    .search-filters h3 {
+      font-size: 0.78rem; font-weight: 700; text-transform: uppercase;
+      color: #a0aec0; letter-spacing: 0.05em; margin: 8px 0 10px;
+    }
+    .search-filters h3:first-child { margin-top: 0; }
+    .search-filters .field { margin-bottom: 12px; }
+    .search-filters .field > label {
+      display: block; font-size: 0.78rem; font-weight: 600;
+      color: #4a5568; margin-bottom: 4px;
+    }
+    .search-filters input[type=text],
+    .search-filters input[type=date],
+    .search-filters input[type=number] {
+      width: 100%; padding: 7px 9px; border: 1.5px solid #e2e8f0;
+      border-radius: 6px; font-size: 0.85rem; font-family: inherit;
+    }
+    .search-filters input:focus { outline: none; border-color: #4299e1; }
+    .search-filters input.invalid { border-color: #fc8181; background: #fff5f5; }
+    .search-filters .row { display: flex; gap: 6px; align-items: center; }
+    .search-filters .row > input { flex: 1; min-width: 0; }
+    .search-filters .row > .sep { font-size: 0.8rem; color: #a0aec0; }
+    .search-filters .regex-toggle {
+      font-size: 0.7rem; padding: 6px 8px; border: 1.5px solid #e2e8f0;
+      background: white; border-radius: 6px; cursor: pointer;
+      color: #a0aec0; user-select: none; flex: 0 0 auto;
+      font-family: ui-monospace, "SF Mono", Consolas, monospace;
+    }
+    .search-filters .regex-toggle.on { background: #ebf8ff; border-color: #bee3f8; color: #2b6cb0; }
+    .search-filters .checkbox-list { display: flex; flex-direction: column; gap: 6px; }
+    .search-filters .checkbox-list label {
+      display: flex; align-items: center; gap: 6px;
+      font-weight: 400; font-size: 0.85rem; color: #4a5568; cursor: pointer;
+    }
+    .search-filters .checkbox-list input { width: auto; }
+    .search-results {
+      background: white; border-radius: 12px; padding: 20px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.08); min-height: 360px;
+    }
+    .search-results .txn-table tr { cursor: pointer; }
+    .search-results .txn-table tbody tr:hover td { background: #f7fafc; }
+    .search-empty { color: #a0aec0; font-size: 0.9rem; padding: 60px 0; text-align: center; }
+    .search-truncated {
+      font-size: 0.78rem; color: #a0aec0; margin-top: 12px; text-align: center;
+    }
+    .txn-cat { color: #4a5568; max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    @media (max-width: 760px) {
+      .search-layout { grid-template-columns: 1fr; }
+      .search-filters { position: static; }
+      #searchScreen { padding: 16px; }
+    }
+
     /* ── No-capture: excluded from html2canvas PDF snapshots ── */
     /* (class applied to button rows so they don't appear in the PDF) */
 
@@ -415,6 +478,7 @@
           <input type="checkbox" id="showHiddenChk" onchange="handleShowHidden()" />
           Show hidden
         </label>
+        <button id="dashSearchBtn" class="btn-secondary" onclick="openSearch()" disabled title="Indexing transactions…">🔎 Search</button>
         <button class="btn-secondary" onclick="refreshData()">↻ Refresh</button>
         <span id="refreshStatus" style="font-size:0.78rem;color:#a0aec0;min-width:80px"></span>
         <button id="dashCsvBtn" class="btn-secondary" onclick="downloadCSV()">⬇ CSV</button>
@@ -459,6 +523,72 @@
         </div>
         <canvas id="groupTrendChart" height="160"></canvas>
       </div>
+    </div>
+  </div>
+
+  <!-- ── Search ──────────────────────────────────────────── -->
+  <div id="searchScreen" style="display:none">
+    <div class="top-bar">
+      <div>
+        <h1>Search transactions</h1>
+        <p class="subtitle" id="searchSubtitle">No results yet</p>
+      </div>
+      <div class="top-actions no-capture">
+        <button class="btn-secondary" onclick="closeSearch()">← Back</button>
+        <button class="btn-secondary" onclick="clearSearchFilters()">Clear filters</button>
+        <button class="btn-secondary" onclick="downloadCSV()">⬇ CSV</button>
+      </div>
+    </div>
+
+    <div class="search-layout">
+      <aside class="search-filters">
+        <h3>Text</h3>
+        <div class="field">
+          <label for="searchPayee">Payee</label>
+          <div class="row">
+            <input type="text" id="searchPayee" placeholder="contains…" oninput="onSearchInput()" />
+            <button type="button" class="regex-toggle" id="searchPayeeRegex" onclick="toggleRegex('payee')" title="Regex mode">.*</button>
+          </div>
+        </div>
+        <div class="field">
+          <label for="searchMemo">Memo</label>
+          <div class="row">
+            <input type="text" id="searchMemo" placeholder="contains…" oninput="onSearchInput()" />
+            <button type="button" class="regex-toggle" id="searchMemoRegex" onclick="toggleRegex('memo')" title="Regex mode">.*</button>
+          </div>
+        </div>
+
+        <h3>Date</h3>
+        <div class="field">
+          <div class="row">
+            <input type="date" id="searchDateFrom" onchange="onSearchInput()" />
+            <span class="sep">→</span>
+            <input type="date" id="searchDateTo" onchange="onSearchInput()" />
+          </div>
+        </div>
+
+        <h3>Amount</h3>
+        <div class="field">
+          <div class="row">
+            <input type="number" id="searchAmtMin" placeholder="min" min="0" step="0.01" onchange="onSearchInput()" />
+            <span class="sep">–</span>
+            <input type="number" id="searchAmtMax" placeholder="max" min="0" step="0.01" onchange="onSearchInput()" />
+          </div>
+        </div>
+
+        <h3>Cleared status</h3>
+        <div class="field">
+          <div class="checkbox-list">
+            <label><input type="checkbox" id="searchClUncleared"  onchange="onSearchInput()" /> Uncleared</label>
+            <label><input type="checkbox" id="searchClCleared"    onchange="onSearchInput()" /> Cleared</label>
+            <label><input type="checkbox" id="searchClReconciled" onchange="onSearchInput()" /> Reconciled</label>
+          </div>
+        </div>
+      </aside>
+
+      <main class="search-results" id="searchResults">
+        <p class="search-empty">Loading…</p>
+      </main>
     </div>
   </div>
 
@@ -602,6 +732,10 @@
     // Past months can still change (backdated edits, etc.) — 24h TTL with manual ↻ Refresh
     // for sooner. Current month: 5 min. Transactions: 2 min current / 24h past.
     const CACHE_TTL = { current: 5 * 60_000, txn: 2 * 60_000, past: 24 * 60 * 60_000 };
+    // All-transactions index cache: longer TTL because delta sync via
+    // server_knowledge keeps it fresh on every load. The cache itself is just
+    // a warm-start optimisation across page reloads in the same tab.
+    const TX_INDEX_CACHE_TTL = 7 * 24 * 60 * 60_000;
 
     function ck(...parts)  { return 'yc_' + parts.join('_'); }
     function cacheGet(key) {
@@ -836,6 +970,26 @@
     // Snapshot of the currently rendered transactions list, read by downloadCSV()
     let lastRenderedTxns = [];
 
+    // ── All-transactions index ───────────────────────────────
+    // Bound to the current period: since_date = monthData[0].month. Powers the
+    // search view (and, downstream, daily roll-ups). Delta sync via
+    // server_knowledge keeps repeat loads tiny.
+    let txIndex = new Map();      // id → txn
+    let txIndexKey = '';          // 'budgetId|since' currently in txIndex
+    let txIndexKnowledge = 0;     // server_knowledge for delta sync
+    let txIndexState = 'cold';    // 'cold' | 'loading' | 'ready' | 'error'
+    let txIndexLoadSeq = 0;       // bumped on every load; older calls are dropped
+    function setTxIndexState(s) { txIndexState = s; updateSearchButton(); }
+    function updateSearchButton() {
+      const btn = document.getElementById('dashSearchBtn');
+      if (!btn) return;
+      const ready = txIndexState === 'ready' && txIndex.size > 0;
+      btn.disabled = !ready;
+      btn.title = ready
+        ? `Search ${txIndex.size.toLocaleString()} transactions`
+        : (txIndexState === 'error' ? 'Indexing failed — try ↻ Refresh' : 'Indexing transactions…');
+    }
+
     // ── YNAB API ─────────────────────────────────────────────
     // quiet:true suppresses showExpired() for background calls. A silent
     // prefetch should never eject the user from the dashboard.
@@ -893,6 +1047,16 @@
       const result = d.data.transactions.filter(t => t.date >= monthStr && t.date < next);
       cacheSet(key, result, isCurrentMonth(monthStr) ? CACHE_TTL.txn : CACHE_TTL.past);
       return result;
+    }
+
+    // All-transactions endpoint. With last_knowledge_of_server, YNAB returns
+    // only entries that changed since that knowledge value (incl. tombstones
+    // with deleted=true), making delta sync cheap.
+    async function fetchAllTransactions(sinceDate, lastKnowledge, opts) {
+      const params = new URLSearchParams({ since_date: sinceDate });
+      if (lastKnowledge) params.set('last_knowledge_of_server', String(lastKnowledge));
+      const d = await ynabFetch(`/budgets/${activeBudget.id}/transactions?${params}`, opts);
+      return d?.data ?? { transactions: [], server_knowledge: lastKnowledge || 0 };
     }
 
     // ── Date helpers ─────────────────────────────────────────
@@ -972,12 +1136,304 @@
       for (const m of monthData) Object.keys(m.groupTotals).forEach(g => seen.add(g));
       allGroups = [...seen];
       for (const g of allGroups) groupColor(g);
+      // Kick off the all-tx index in the background — search view consumes it.
+      // Fire-and-forget; the dashboard renders from monthData and shouldn't wait.
+      loadAllTransactions({ quiet }).catch(err => console.warn('Tx index:', err));
+    }
+
+    // Build / refresh the all-transactions index for the currently-loaded period.
+    // Idempotent and self-cancelling: each call bumps txIndexLoadSeq so older
+    // in-flight calls drop their writes if the user has moved on (e.g. switched
+    // periods or budgets before the previous fetch resolved).
+    async function loadAllTransactions({ quiet = true } = {}) {
+      if (!activeBudget) return;
+      const since = monthData[0]?.month;
+      if (!since) return;
+      const key = `${activeBudget.id}|${since}`;
+      const seq = ++txIndexLoadSeq;
+      setTxIndexState('loading');
+
+      // If the (budget, since) pair changed, start a fresh in-memory map.
+      // Otherwise we're refreshing the existing one, so keep its contents
+      // and let the delta merge update them in place.
+      if (txIndexKey !== key) {
+        txIndex = new Map();
+        txIndexKey = key;
+        txIndexKnowledge = 0;
+      }
+
+      // Warm-start from sessionStorage cache if available (same budget, same since).
+      const cacheKey = ck('tx', activeBudget.id, since);
+      const cached = cacheGet(cacheKey);
+      if (cached && txIndex.size === 0) {
+        for (const t of cached.t || []) txIndex.set(t.id, t);
+        txIndexKnowledge = cached.k || 0;
+      }
+
+      try {
+        const data = await fetchAllTransactions(since, txIndexKnowledge, { quiet });
+        if (seq !== txIndexLoadSeq) return;          // superseded by a newer call
+        mergeTxns(txIndex, data.transactions || []);
+        txIndexKnowledge = data.server_knowledge || txIndexKnowledge;
+        // cacheSet already swallows QuotaExceededError — heavy users degrade
+        // to in-memory only and lose only the warm-start optimisation.
+        cacheSet(cacheKey, { k: txIndexKnowledge, t: [...txIndex.values()] }, TX_INDEX_CACHE_TTL);
+        setTxIndexState('ready');
+      } catch (err) {
+        if (seq !== txIndexLoadSeq) return;
+        console.warn('All-tx index load failed:', err);
+        setTxIndexState(txIndex.size > 0 ? 'ready' : 'error');
+      }
+    }
+
+    function mergeTxns(target, incoming) {
+      for (const t of incoming) {
+        if (t.deleted) target.delete(t.id);
+        else target.set(t.id, t);
+      }
+    }
+
+    // ── Search ───────────────────────────────────────────────
+    // State + filter pipeline for the multi-criteria search view. Reads from
+    // txIndex (the all-transactions map). Splits are flattened into per-sub
+    // rows so a category/payee filter at the sub level matches.
+    let searchFilters = {
+      payee: '', payeeRegex: false,
+      memo:  '', memoRegex:  false,
+      dateFrom: '', dateTo: '',
+      amountMin: '', amountMax: '',
+      cleared: { uncleared: true, cleared: true, reconciled: true },
+    };
+    let lastSearchResults = [];
+    const SEARCH_RENDER_LIMIT = 500;
+
+    function defaultSearchDateRange() {
+      const start = monthData[0]?.month || '';
+      const lastMonth = monthData[monthData.length - 1]?.month;
+      let end = '';
+      if (lastMonth) {
+        const [y, m] = lastMonth.split('-').map(Number);
+        const last = new Date(y, m, 0);   // day 0 of next month = last day of this month
+        end = `${last.getFullYear()}-${String(last.getMonth()+1).padStart(2,'0')}-${String(last.getDate()).padStart(2,'0')}`;
+      }
+      return { start, end };
+    }
+
+    function openSearch() {
+      if (txIndexState !== 'ready') return;
+      // Default the date range to the dashboard's current period each time
+      // search opens — feels less surprising than persisting an old range.
+      const { start, end } = defaultSearchDateRange();
+      searchFilters.dateFrom = start;
+      searchFilters.dateTo   = end;
+      applySearchFiltersToInputs();
+      runSearch();
+      showScreen('searchScreen');
+    }
+    function closeSearch() { showScreen('dashboard'); }
+
+    function applySearchFiltersToInputs() {
+      const f = searchFilters;
+      document.getElementById('searchPayee').value      = f.payee;
+      document.getElementById('searchMemo').value       = f.memo;
+      document.getElementById('searchDateFrom').value   = f.dateFrom;
+      document.getElementById('searchDateTo').value     = f.dateTo;
+      document.getElementById('searchAmtMin').value     = f.amountMin;
+      document.getElementById('searchAmtMax').value     = f.amountMax;
+      document.getElementById('searchClUncleared').checked  = f.cleared.uncleared;
+      document.getElementById('searchClCleared').checked    = f.cleared.cleared;
+      document.getElementById('searchClReconciled').checked = f.cleared.reconciled;
+      document.getElementById('searchPayeeRegex').classList.toggle('on', f.payeeRegex);
+      document.getElementById('searchMemoRegex').classList.toggle('on', f.memoRegex);
+    }
+
+    function readSearchFiltersFromInputs() {
+      const f = searchFilters;
+      f.payee     = document.getElementById('searchPayee').value;
+      f.memo      = document.getElementById('searchMemo').value;
+      f.dateFrom  = document.getElementById('searchDateFrom').value;
+      f.dateTo    = document.getElementById('searchDateTo').value;
+      f.amountMin = document.getElementById('searchAmtMin').value;
+      f.amountMax = document.getElementById('searchAmtMax').value;
+      f.cleared.uncleared  = document.getElementById('searchClUncleared').checked;
+      f.cleared.cleared    = document.getElementById('searchClCleared').checked;
+      f.cleared.reconciled = document.getElementById('searchClReconciled').checked;
+    }
+
+    function clearSearchFilters() {
+      const { start, end } = defaultSearchDateRange();
+      searchFilters = {
+        payee: '', payeeRegex: false,
+        memo:  '', memoRegex:  false,
+        dateFrom: start, dateTo: end,
+        amountMin: '', amountMax: '',
+        cleared: { uncleared: true, cleared: true, reconciled: true },
+      };
+      applySearchFiltersToInputs();
+      runSearch();
+    }
+
+    function toggleRegex(which) {
+      const k = which === 'payee' ? 'payeeRegex' : 'memoRegex';
+      searchFilters[k] = !searchFilters[k];
+      const id = which === 'payee' ? 'searchPayeeRegex' : 'searchMemoRegex';
+      document.getElementById(id).classList.toggle('on', searchFilters[k]);
+      runSearch();
+    }
+
+    // Compile a search needle into a RegExp. Returns null for empty input,
+    // false for invalid regex (caller marks the input red and skips the filter).
+    function compileSearchRegex(text, isRegex) {
+      if (!text) return null;
+      if (!isRegex) {
+        const esc = text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        return new RegExp(esc, 'i');
+      }
+      try { return new RegExp(text, 'i'); } catch { return false; }
+    }
+
+    // YNAB returns parent transactions with subtransactions[] for splits. Search
+    // wants to match at the sub level (different categories/payees/memos), so
+    // emit one row per sub, inheriting the parent's date/account/cleared/flag.
+    function flattenTxnsForSearch(iter) {
+      const out = [];
+      for (const t of iter) {
+        if (t.deleted) continue;
+        const subs = t.subtransactions;
+        if (subs && subs.length > 0) {
+          for (const s of subs) {
+            if (s.deleted) continue;
+            out.push({
+              id: s.id, parentId: t.id, date: t.date,
+              account_id: t.account_id, account_name: t.account_name,
+              payee_id: s.payee_id ?? t.payee_id,
+              payee_name: s.payee_name ?? t.payee_name,
+              category_id: s.category_id, category_name: s.category_name,
+              memo: s.memo || t.memo || '',
+              amount: s.amount,
+              cleared: t.cleared,
+              flag_color: t.flag_color, flag_name: t.flag_name,
+              approved: t.approved,
+            });
+          }
+        } else {
+          out.push(t);
+        }
+      }
+      return out;
+    }
+
+    let _searchInputTimer = null;
+    function onSearchInput() {
+      // Debounce text inputs at 150ms; checkboxes/dates fire onchange so they
+      // also pass through here, but the debounce window is short enough that
+      // it doesn't feel laggy on click.
+      readSearchFiltersFromInputs();
+      clearTimeout(_searchInputTimer);
+      _searchInputTimer = setTimeout(runSearch, 150);
+    }
+
+    function runSearch() {
+      if (!document.getElementById('searchScreen')) return;
+      readSearchFiltersFromInputs();
+      const f = searchFilters;
+
+      let payeeRe = compileSearchRegex(f.payee, f.payeeRegex);
+      let memoRe  = compileSearchRegex(f.memo,  f.memoRegex);
+      document.getElementById('searchPayee').classList.toggle('invalid', payeeRe === false);
+      document.getElementById('searchMemo').classList.toggle('invalid',  memoRe === false);
+      if (payeeRe === false) payeeRe = null;
+      if (memoRe  === false) memoRe  = null;
+
+      const minAmt = f.amountMin === '' ? null : parseFloat(f.amountMin);
+      const maxAmt = f.amountMax === '' ? null : parseFloat(f.amountMax);
+      const flat = flattenTxnsForSearch(txIndex.values());
+
+      const result = [];
+      for (const t of flat) {
+        if (f.dateFrom && t.date < f.dateFrom) continue;
+        if (f.dateTo   && t.date > f.dateTo)   continue;
+        if (payeeRe && !payeeRe.test(t.payee_name || '')) continue;
+        if (memoRe  && !memoRe.test(t.memo || ''))         continue;
+        const absAmt = Math.abs(t.amount) / 1000;
+        if (minAmt !== null && !isNaN(minAmt) && absAmt < minAmt) continue;
+        if (maxAmt !== null && !isNaN(maxAmt) && absAmt > maxAmt) continue;
+        if (!f.cleared[t.cleared]) continue;
+        result.push(t);
+      }
+      result.sort((a, b) => b.date.localeCompare(a.date));
+      lastSearchResults = result;
+      renderSearchResults();
+    }
+
+    function renderSearchResults() {
+      const subtitle = document.getElementById('searchSubtitle');
+      const total = lastSearchResults.reduce((s, t) => s + Math.abs(t.amount) / 1000, 0);
+      subtitle.textContent = `${lastSearchResults.length.toLocaleString()} result${lastSearchResults.length === 1 ? '' : 's'} · Total ${fmtMoney2(total)}`;
+
+      const container = document.getElementById('searchResults');
+      if (!lastSearchResults.length) {
+        container.innerHTML = `<p class="search-empty">No transactions match these filters.</p>`;
+        return;
+      }
+      const truncated = lastSearchResults.length > SEARCH_RENDER_LIMIT;
+      const rows = lastSearchResults.slice(0, SEARCH_RENDER_LIMIT);
+      container.innerHTML = `
+        <table class="txn-table">
+          <thead>
+            <tr>
+              <th>Date</th><th>Account</th><th>Payee</th>
+              <th>Category</th><th>Memo</th><th class="amount">Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows.map((t, i) => {
+              const amt = Math.abs(t.amount) / 1000;
+              const cleared = t.cleared === 'cleared' || t.cleared === 'reconciled';
+              const memo = t.memo ? `<span class="txn-memo">${escapeHtml(t.memo)}</span>` : '';
+              return `<tr class="${cleared ? '' : 'uncleared'}" data-ri="${i}">
+                <td class="txn-date">${fmtDate(t.date)}</td>
+                <td class="txn-account">${escapeHtml(t.account_name || '—')}</td>
+                <td class="txn-payee">${escapeHtml(t.payee_name || '—')}</td>
+                <td class="txn-cat">${escapeHtml(t.category_name || '—')}</td>
+                <td class="txn-memo-cell">${memo}</td>
+                <td class="amount">${fmtMoney2(amt)}</td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+        ${truncated ? `<p class="search-truncated">Showing first ${SEARCH_RENDER_LIMIT} of ${lastSearchResults.length.toLocaleString()}. Add filters to narrow.</p>` : ''}`;
+      // Use event delegation — avoids quoting issues with payee/category names
+      container.querySelector('tbody').onclick = e => {
+        const tr = e.target.closest('tr[data-ri]');
+        if (!tr) return;
+        const t = lastSearchResults[+tr.dataset.ri];
+        if (t) drillIntoFromSearch(t);
+      };
+    }
+
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+    }
+
+    function drillIntoFromSearch(t) {
+      if (!t.category_name) return;
+      // Map the txn's date back to a monthData index. monthData is dense
+      // across the period, so a contains-check on the YYYY-MM prefix works.
+      const ym = t.date.slice(0, 7);
+      const idx = monthData.findIndex(m => m.month.startsWith(ym));
+      if (idx < 0) return;
+      closeSearch();
+      currentMonthIndex = idx;
+      document.getElementById('modalOverlay').classList.add('open');
+      openCategoryDetail(t.category_name);
     }
 
     // ── Screens ──────────────────────────────────────────────
     function showScreen(id) {
-      ['setupScreen','loadingScreen','budgetScreen','dashboard'].forEach(s =>
-        document.getElementById(s).style.display = s===id ? (id==='dashboard'?'block':'flex') : 'none');
+      const blockScreens = new Set(['dashboard', 'searchScreen']);
+      ['setupScreen','loadingScreen','budgetScreen','dashboard','searchScreen'].forEach(s =>
+        document.getElementById(s).style.display = s===id ? (blockScreens.has(id)?'block':'flex') : 'none');
     }
     function showSetup() { clearTokens(); localStorage.removeItem('ynab_budget'); showScreen('setupScreen'); }
     function showLoading(msg='Loading…') { document.getElementById('loadingMsg').textContent=msg; showScreen('loadingScreen'); }
@@ -1008,6 +1464,10 @@
     async function selectBudget(id) {
       activeBudget = budgets.find(b => b.id===id);
       localStorage.setItem('ynab_budget', id);
+      // Reset in-memory tx index so the previous budget's data can't bleed in.
+      // The per-budget sessionStorage cache still serves as warm-start when
+      // we come back to a budget within the same tab session.
+      txIndex = new Map(); txIndexKey = ''; txIndexKnowledge = 0; setTxIndexState('cold');
       try {
         const warm = allCached(datesForPeriod());
         if (warm) {
@@ -1273,14 +1733,23 @@
       setTimeout(() => URL.revokeObjectURL(url), 0);
     }
     function downloadCSV() {
-      const modalOpen = document.getElementById('modalOverlay').classList.contains('open');
-      const catView   = document.getElementById('categoryView').style.display === 'block';
-      const state     = !modalOpen ? 'dashboard' : catView ? 'category' : 'month';
-      const bname     = activeBudget?.name ?? 'YNAB';
-      const safe      = s => s.replace(/[^\w\s\-—.]/g, '').replace(/\s+/g, '_');
+      const searchOpen = document.getElementById('searchScreen').style.display === 'block';
+      const modalOpen  = document.getElementById('modalOverlay').classList.contains('open');
+      const catView    = document.getElementById('categoryView').style.display === 'block';
+      const state      = searchOpen ? 'search' : !modalOpen ? 'dashboard' : catView ? 'category' : 'month';
+      const bname      = activeBudget?.name ?? 'YNAB';
+      const safe       = s => s.replace(/[^\w\s\-—.]/g, '').replace(/\s+/g, '_');
 
       let rows, filenameStem;
-      if (state === 'dashboard') {
+      if (state === 'search') {
+        rows = [['Date', 'Account', 'Payee', 'Category', 'Memo', 'Cleared', 'Amount']];
+        for (const t of lastSearchResults) {
+          const amt = (Math.abs(t.amount) / 1000).toFixed(2);
+          const cleared = (t.cleared === 'cleared' || t.cleared === 'reconciled') ? 'cleared' : 'pending';
+          rows.push([t.date, t.account_name || '', t.payee_name || '', t.category_name || '', t.memo || '', cleared, amt]);
+        }
+        filenameStem = `${bname}_search`;
+      } else if (state === 'dashboard') {
         // One row per (month, category). Months with no spending still get a
         // placeholder row so a zero-spend period isn't silently dropped.
         rows = [['Month', 'Group', 'Category', 'Amount']];
