@@ -323,6 +323,20 @@
     .search-filters .facet-empty {
       font-size: 0.78rem; color: #a0aec0; padding: 4px 0; margin: 0;
     }
+    .flag-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0; }
+    .flag-chip {
+      width: 26px; height: 26px; border-radius: 50%;
+      border: 3px solid transparent; cursor: pointer;
+      transition: border-color 0.12s; outline: none;
+    }
+    .flag-chip.on { border-color: #2d3748; }
+    .flag-chip[data-flag="none"]   { background: #e2e8f0; }
+    .flag-chip[data-flag="red"]    { background: #fc8181; }
+    .flag-chip[data-flag="orange"] { background: #f6ad55; }
+    .flag-chip[data-flag="yellow"] { background: #f6e05e; }
+    .flag-chip[data-flag="green"]  { background: #68d391; }
+    .flag-chip[data-flag="blue"]   { background: #63b3ed; }
+    .flag-chip[data-flag="purple"] { background: #b794f4; }
     .search-results {
       background: white; border-radius: 12px; padding: 20px;
       box-shadow: 0 1px 4px rgba(0,0,0,0.08); min-height: 360px;
@@ -623,6 +637,26 @@
             <button type="button" class="facet-clear" id="searchAcctClear" onclick="clearSearchFacet('acct')">Clear selection</button>
           </div>
           <div class="checkbox-list scrollable" id="searchAcctList"></div>
+        </div>
+
+        <h3>Flag</h3>
+        <div class="field">
+          <div class="flag-chips" id="searchFlagChips">
+            <button type="button" class="flag-chip" data-flag="none"   title="No flag"  onclick="toggleFlagChip('none')"></button>
+            <button type="button" class="flag-chip" data-flag="red"    title="Red"      onclick="toggleFlagChip('red')"></button>
+            <button type="button" class="flag-chip" data-flag="orange" title="Orange"   onclick="toggleFlagChip('orange')"></button>
+            <button type="button" class="flag-chip" data-flag="yellow" title="Yellow"   onclick="toggleFlagChip('yellow')"></button>
+            <button type="button" class="flag-chip" data-flag="green"  title="Green"    onclick="toggleFlagChip('green')"></button>
+            <button type="button" class="flag-chip" data-flag="blue"   title="Blue"     onclick="toggleFlagChip('blue')"></button>
+            <button type="button" class="flag-chip" data-flag="purple" title="Purple"   onclick="toggleFlagChip('purple')"></button>
+          </div>
+        </div>
+
+        <h3>Options</h3>
+        <div class="field">
+          <div class="checkbox-list">
+            <label title="Show transactions in categories you've hidden in YNAB"><input type="checkbox" id="searchIncludeHidden" onchange="onSearchInput()" /> Include hidden categories</label>
+          </div>
         </div>
       </aside>
 
@@ -1172,6 +1206,11 @@
       const details = await Promise.all(dates.map(m => fetchMonthDetail(m, { quiet })));
       monthData = dates.map((m, i) => details[i] ? processMonth(details[i], m)
         : { month: m, label: fmtMonth(m), shortLabel: fmtMonth(m,true), total:0, categories:[], groupTotals:{} });
+      hiddenCategoryIds = new Set(
+        details.flatMap(d => d?.categories ?? [])
+               .filter(c => c.category_group_name === 'Hidden Categories')
+               .map(c => c.id)
+      );
       const seen = new Set();
       for (const m of monthData) Object.keys(m.groupTotals).forEach(g => seen.add(g));
       allGroups = [...seen];
@@ -1237,6 +1276,8 @@
     // State + filter pipeline for the multi-criteria search view. Reads from
     // txIndex (the all-transactions map). Splits are flattened into per-sub
     // rows so a category/payee filter at the sub level matches.
+    let hiddenCategoryIds = new Set();
+
     let searchFilters = {
       payee: '', payeeRegex: false,
       memo:  '', memoRegex:  false,
@@ -1245,6 +1286,8 @@
       cleared: { uncleared: true, cleared: true, reconciled: true },
       categoryIds: new Set(),  // empty = no filter
       accountIds:  new Set(),  // empty = no filter
+      flagColors:  new Set(),  // empty = no filter; values: 'none','red','orange','yellow','green','blue','purple'
+      includeHidden: false,    // exclude Hidden Categories group by default
     };
     let lastSearchResults = [];
     let searchFacetData = { categories: [], accounts: [] };
@@ -1291,6 +1334,10 @@
       document.getElementById('searchClReconciled').checked = f.cleared.reconciled;
       document.getElementById('searchPayeeRegex').classList.toggle('on', f.payeeRegex);
       document.getElementById('searchMemoRegex').classList.toggle('on', f.memoRegex);
+      document.getElementById('searchIncludeHidden').checked = f.includeHidden;
+      document.querySelectorAll('#searchFlagChips .flag-chip').forEach(btn => {
+        btn.classList.toggle('on', f.flagColors.has(btn.dataset.flag));
+      });
     }
 
     function readSearchFiltersFromInputs() {
@@ -1304,6 +1351,7 @@
       f.cleared.uncleared  = document.getElementById('searchClUncleared').checked;
       f.cleared.cleared    = document.getElementById('searchClCleared').checked;
       f.cleared.reconciled = document.getElementById('searchClReconciled').checked;
+      f.includeHidden      = document.getElementById('searchIncludeHidden').checked;
     }
 
     function clearSearchFilters() {
@@ -1316,6 +1364,8 @@
         cleared: { uncleared: true, cleared: true, reconciled: true },
         categoryIds: new Set(),
         accountIds:  new Set(),
+        flagColors:  new Set(),
+        includeHidden: false,
       };
       const catQ  = document.getElementById('searchCatQuery');
       const acctQ = document.getElementById('searchAcctQuery');
@@ -1406,6 +1456,7 @@
       const result = [];
       const catFilterOn  = f.categoryIds.size > 0;
       const acctFilterOn = f.accountIds.size > 0;
+      const flagFilterOn = f.flagColors.size > 0;
       for (const t of flat) {
         if (f.dateFrom && t.date < f.dateFrom) continue;
         if (f.dateTo   && t.date > f.dateTo)   continue;
@@ -1417,6 +1468,8 @@
         if (!f.cleared[t.cleared]) continue;
         if (catFilterOn  && !f.categoryIds.has(t.category_id || '')) continue;
         if (acctFilterOn && !f.accountIds.has(t.account_id  || '')) continue;
+        if (flagFilterOn && !f.flagColors.has(t.flag_color || 'none')) continue;
+        if (!f.includeHidden && hiddenCategoryIds.has(t.category_id)) continue;
         result.push(t);
       }
       result.sort((a, b) => b.date.localeCompare(a.date));
@@ -1544,6 +1597,14 @@
       if (p.sel.size === 0) return;
       p.sel.clear();
       renderSearchFacet(which);
+      runSearch();
+    }
+
+    function toggleFlagChip(color) {
+      const s = searchFilters.flagColors;
+      if (s.has(color)) s.delete(color); else s.add(color);
+      document.querySelector(`#searchFlagChips [data-flag="${color}"]`)
+              ?.classList.toggle('on', s.has(color));
       runSearch();
     }
 
