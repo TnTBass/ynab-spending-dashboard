@@ -33,6 +33,12 @@ async function openInsights() {
   } catch (e) {
     showChartError('heatmapEmpty', 'Couldn’t load the heatmap library — check your connection.');
   }
+  try {
+    await loadScriptOnce('https://cdn.jsdelivr.net/npm/chartjs-chart-sankey@0.12.0');
+    renderSankey();
+  } catch (e) {
+    showChartError('sankeyEmpty', 'Couldn’t load the flow-diagram library — check your connection.');
+  }
 }
 function closeInsights() { showScreen('dashboard'); }
 
@@ -192,6 +198,33 @@ function renderHeatmap() {
           ticks: { stepSize: 1, callback: (v) => dayLabels[v] || '' },
           grid: { display: false },
         },
+      },
+    },
+  });
+}
+
+// ── Spending flow Sankey (chartjs-chart-sankey) ──
+function renderSankey() {
+  const flows = sankeyFlows(monthData);
+  const empty = document.getElementById('sankeyEmpty');
+  if (!flows.length) { empty.style.display = 'block'; return; }
+  empty.style.display = 'none';
+  makeChart('sankeyChart', {
+    type: 'sankey',
+    data: {
+      datasets: [{
+        label: 'Spending flow',
+        data: flows.map(f => ({ from: f.from, to: f.to, flow: f.flow })),
+        colorMode: 'gradient',
+        color: '#4299e1',
+        borderWidth: 0,
+      }],
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: (c) => `${c.raw.from} → ${c.raw.to}: $${Number(c.raw.flow).toFixed(0)}` } },
       },
     },
   });
