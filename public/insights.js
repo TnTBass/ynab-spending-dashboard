@@ -205,60 +205,79 @@ function renderBudgetVsActual() {
   });
 }
 
-// ── Daily-spend calendar heatmap (chartjs-chart-matrix) ──
+// ── Daily-spend calendar heatmap (chartjs-chart-matrix), scope-aware ──
+function heatColor(v, max) {
+  if (!v || max <= 0) return '#ebedf0';
+  const t = Math.min(1, v / max);
+  // interpolate #c6e0f5 -> #2b6cb0
+  const a = [198, 224, 245], b = [43, 108, 176];
+  const ch = a.map((c, i) => Math.round(c + (b[i] - c) * t));
+  return `rgb(${ch[0]},${ch[1]},${ch[2]})`;
+}
+
 function renderHeatmap() {
-  const totals = dailyTotals([...txIndex.values()]);
+  const totals = dailyTotals(insightsTxns);
   const empty = document.getElementById('heatmapEmpty');
-  if (!totals.length) { empty.style.display = 'block'; return; }
+  const subtitle = document.getElementById('heatmapSubtitle');
+  const legend = document.getElementById('heatmapLegend');
+  const months = monthsForScope(insightsScope);
+  const scopeLabel = insightsScope.mode === 'year'
+    ? `Daily spend · ${insightsScope.year}`
+    : `Daily spend · ${fmtMonth(months[0])}`;
+  if (subtitle) subtitle.textContent = scopeLabel;
+
+  if (!totals.length) { empty.style.display = 'block'; if (legend) legend.innerHTML = ''; return; }
   empty.style.display = 'none';
 
-  const map = {};
-  let max = 0;
+  const map = {}; let max = 0;
   for (const d of totals) { map[d.date] = d.amount; if (d.amount > max) max = d.amount; }
 
-  const start = new Date(totals[0].date + 'T12:00:00Z');
-  const end = new Date(totals[totals.length - 1].date + 'T12:00:00Z');
-  const cells = [];
-  for (let dt = new Date(start); dt <= end; dt.setUTCDate(dt.getUTCDate() + 1)) {
+  // Grid spans the whole scope window (so empty days show), not just spend days.
+  const start = new Date(months[0] + 'T12:00:00Z');
+  const endExclusive = new Date(nextYNABMonth(months[months.length - 1]) + 'T12:00:00Z');
+  // Anchor week columns to the Sunday on/before start so weekday rows line up.
+  const gridStart = new Date(start); gridStart.setUTCDate(gridStart.getUTCDate() - gridStart.getUTCDay());
+
+  const cells = []; const monthTicks = {};
+  for (let dt = new Date(gridStart); dt < endExclusive; dt.setUTCDate(dt.getUTCDate() + 1)) {
     const iso = dt.toISOString().slice(0, 10);
-    const week = Math.floor((dt - start) / (7 * 864e5));
-    cells.push({ x: week, y: dt.getUTCDay(), d: iso, v: map[iso] || 0 });
+    const inScope = dt >= start && dt < endExclusive;
+    const week = Math.floor((dt - gridStart) / (7 * 864e5));
+    if (dt.getUTCDate() === 1) monthTicks[week] = dt.toLocaleString('default', { month: 'short', timeZone: 'UTC' });
+    cells.push({ x: week, y: dt.getUTCDay(), d: iso, v: inScope ? (map[iso] || 0) : null });
   }
   const weeks = cells.length ? cells[cells.length - 1].x + 1 : 1;
-  const dayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const dayLabels = ['', 'Mon', '', 'Wed', '', 'Fri', ''];
 
   makeChart('heatmapChart', {
     type: 'matrix',
-    data: {
-      datasets: [{
-        label: 'Daily spend',
-        data: cells,
-        width: (c) => Math.max(2, ((c.chart.chartArea || {}).width || 0) / weeks - 2),
-        height: (c) => Math.max(2, ((c.chart.chartArea || {}).height || 0) / 7 - 2),
-        backgroundColor: (c) => {
-          const v = c.raw.v;
-          if (!v) return '#ebedf0';
-          return `rgba(66,153,225,${0.15 + 0.85 * (v / max)})`;
-        },
-        borderWidth: 0,
-      }],
-    },
+    data: { datasets: [{
+      label: 'Daily spend',
+      data: cells,
+      width: (c) => Math.max(3, ((c.chart.chartArea || {}).width || 0) / weeks - 2),
+      height: (c) => Math.max(3, ((c.chart.chartArea || {}).height || 0) / 7 - 2),
+      backgroundColor: (c) => c.raw.v === null ? 'transparent' : heatColor(c.raw.v, max),
+      borderWidth: 0,
+    }]},
     options: {
       responsive: true,
       plugins: {
         legend: { display: false },
-        tooltip: { callbacks: { title: (i) => i[0].raw.d, label: (i) => '$' + i.raw.v.toFixed(2) } },
+        tooltip: { filter: (i) => i.raw.v !== null, callbacks: { title: (i) => i[0].raw.d, label: (i) => fmtMoney(i.raw.v || 0) } },
       },
       scales: {
-        x: { display: false, type: 'linear', offset: true, min: 0, max: weeks },
-        y: {
-          type: 'linear', offset: true, min: -0.5, max: 6.5, reverse: true,
-          ticks: { stepSize: 1, callback: (v) => dayLabels[v] || '' },
-          grid: { display: false },
-        },
+        x: { type: 'linear', position: 'top', offset: true, min: 0, max: weeks,
+             ticks: { stepSize: 1, autoSkip: false, callback: (v) => monthTicks[v] || '' }, grid: { display: false } },
+        y: { type: 'linear', offset: true, min: -0.5, max: 6.5, reverse: true,
+             ticks: { stepSize: 1, callback: (v) => dayLabels[v] || '' }, grid: { display: false } },
       },
     },
   });
+
+  if (legend) {
+    const stops = [0, 0.25, 0.5, 0.75, 1].map(t => heatColor(t * max || (t === 0 ? 0 : 1), max));
+    legend.innerHTML = '<span>Less</span>' + stops.map(c => `<span class="sw" style="background:${c}"></span>`).join('') + '<span>More</span>';
+  }
 }
 
 // Spending composition by group for a single processed month. Input: one
