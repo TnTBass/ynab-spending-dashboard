@@ -42,6 +42,14 @@ async function openInsights() {
 }
 function closeInsights() { showScreen('dashboard'); }
 
+// Re-render Insights charts if the screen is currently showing (e.g. after a
+// period or budget change refreshes monthData/txIndex). Safe to call anytime.
+function refreshInsightsIfOpen() {
+  const ins = document.getElementById('insights');
+  if (!ins || getComputedStyle(ins).display === 'none') return;
+  openInsights();
+}
+
 // ── Pure data-shapers ───────────────────────────────────────────
 // Aggregate budgeted vs actual spend by category group across all loaded months.
 // Input: monthData where each month may carry budgetRows:[{group,name,budgeted,actual}]
