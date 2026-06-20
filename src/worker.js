@@ -1,5 +1,5 @@
 /**
- * YNAB Spending Dashboard — Cloudflare Worker
+ * Spending Dashboard for YNAB — Cloudflare Worker
  *
  * Serves static assets from ./public and provides three small API routes
  * that proxy YNAB's OAuth token endpoint. The proxy exists for one reason:

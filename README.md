@@ -1,4 +1,4 @@
-# YNAB Spending Dashboard
+# Spending Dashboard for YNAB
 
 A self-contained, browser-based spending dashboard for [YNAB](https://www.ynab.com/). Monthly trends, category drill-downs, group breakdowns, transaction lists, and PDF export. No data ever leaves your browser except for direct calls to YNAB.
 

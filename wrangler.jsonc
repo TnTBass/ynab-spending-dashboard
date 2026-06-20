@@ -1,5 +1,5 @@
 /**
- * Cloudflare Worker config for the YNAB Spending Dashboard.
+ * Cloudflare Worker config for Spending Dashboard for YNAB.
  *
  * The Worker serves static assets from ./public AND exposes three small
  * API routes that proxy YNAB's /oauth/token endpoint. The proxy holds
