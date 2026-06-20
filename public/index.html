@@ -514,7 +514,7 @@
           Show hidden
         </label>
         <button id="dashSearchBtn" class="btn-secondary" onclick="openSearch()" disabled title="Indexing transactions…">🔎 Search</button>
-        <button id="dashInsightsBtn" class="btn-secondary" onclick="openInsights()">📊 Insights</button>
+        <button id="dashInsightsBtn" class="btn-secondary" onclick="openInsights()" disabled title="Loading data…">📊 Insights</button>
         <button class="btn-secondary" onclick="refreshData()">↻ Refresh</button>
         <span id="refreshStatus" style="font-size:0.78rem;color:#a0aec0;min-width:80px"></span>
         <button id="dashCsvBtn" class="btn-secondary" onclick="downloadCSV()">⬇ CSV</button>
@@ -2065,6 +2065,8 @@
       topCatMonthIdx = monthData.length - 1;
       renderStatCards(); renderTotalChart(); renderGroupChart();
       renderTopCatBar(); renderGroupTrendSelect(); renderGroupTrendChart();
+      const insightsBtn = document.getElementById('dashInsightsBtn');
+      if (insightsBtn) { insightsBtn.disabled = false; insightsBtn.title = 'Explore charts & insights'; }
       refreshInsightsIfOpen();
     }
 

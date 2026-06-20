@@ -88,6 +88,8 @@ function dailyTotals(txns) {
 // Build Sankey flows from monthData: a single "Spending" root → each group,
 // then each group → its categories. Amounts are summed across loaded months
 // (dollars). Output: [{from, to, flow}] with flow > 0.
+// Input note: relies on m.categories as produced by processMonth — already
+// filtered to outflows only, with hidden/skipped categories excluded.
 // Note: node identity in a Sankey is the label. Two categories with the same
 // name in different groups will merge into one node (acceptable); a category
 // named exactly "Spending" or sharing a group's name could create a cycle —
