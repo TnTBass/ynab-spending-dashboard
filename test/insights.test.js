@@ -82,3 +82,19 @@ test('sankeyFlows builds Spending→Group and Group→Category flows', () => {
 test('sankeyFlows returns [] when there is no spend', () => {
   assert.deepStrictEqual(sankeyFlows([{ categories: [] }]), []);
 });
+
+const { groupComposition } = require('../public/insights.js');
+
+test('groupComposition sums a month\'s category amounts by group, desc', () => {
+  const month = { groupTotals: { Food: 520, Fun: 80, Bills: 1200 } };
+  assert.deepStrictEqual(groupComposition(month), [
+    { group: 'Bills', total: 1200 },
+    { group: 'Food', total: 520 },
+    { group: 'Fun', total: 80 },
+  ]);
+});
+
+test('groupComposition returns [] for a missing/empty month', () => {
+  assert.deepStrictEqual(groupComposition(null), []);
+  assert.deepStrictEqual(groupComposition({ groupTotals: {} }), []);
+});

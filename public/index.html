@@ -553,6 +553,12 @@
       </div>
 
       <div class="card">
+        <h2>Spending by Group</h2>
+        <div class="hint" id="groupDonutLabel">This month</div>
+        <canvas id="groupDonutChart" height="160"></canvas>
+      </div>
+
+      <div class="card">
         <h2>Group Trend</h2>
         <div class="hint">
           Showing:&nbsp;<select id="groupTrendSelect" onchange="renderGroupTrendChart()" style="border:none;background:transparent;color:#a0aec0;font-size:0.75rem;cursor:pointer"></select>
@@ -2065,6 +2071,7 @@
       topCatMonthIdx = monthData.length - 1;
       renderStatCards(); renderTotalChart(); renderGroupChart();
       renderTopCatBar(); renderGroupTrendSelect(); renderGroupTrendChart();
+      renderGroupDonut();
       const insightsBtn = document.getElementById('dashInsightsBtn');
       if (insightsBtn) { insightsBtn.disabled = false; insightsBtn.title = 'Explore charts & insights'; }
       refreshInsightsIfOpen();

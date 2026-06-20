@@ -213,6 +213,16 @@ function renderHeatmap() {
   });
 }
 
+// Spending composition by group for a single processed month. Input: one
+// monthData entry ({groupTotals}). Output: [{group, total}] sorted desc.
+function groupComposition(month) {
+  const totals = (month && month.groupTotals) || {};
+  return Object.keys(totals)
+    .map(group => ({ group, total: totals[group] }))
+    .filter(g => g.total > 0)
+    .sort((a, b) => b.total - a.total);
+}
+
 // ── Spending flow Sankey (chartjs-chart-sankey) ──
 function renderSankey() {
   const flows = sankeyFlows(monthData);
@@ -240,7 +250,32 @@ function renderSankey() {
   });
 }
 
+// ── Spending-by-group donut for the latest month (Overview) ──
+function renderGroupDonut() {
+  const month = monthData[monthData.length - 1];
+  const rows = groupComposition(month);
+  const labelEl = document.getElementById('groupDonutLabel');
+  if (labelEl && month) labelEl.textContent = month.label.replace(' *', '');
+  if (!rows.length) { makeChart('groupDonutChart', { type: 'doughnut', data: { labels: [], datasets: [{ data: [] }] } }); return; }
+  const total = rows.reduce((s, r) => s + r.total, 0);
+  makeChart('groupDonutChart', {
+    type: 'doughnut',
+    data: {
+      labels: rows.map(r => r.group),
+      datasets: [{ data: rows.map(r => r.total), backgroundColor: rows.map(r => groupColor(r.group)), borderWidth: 2, borderColor: '#fff' }],
+    },
+    options: {
+      responsive: true,
+      cutout: '62%',
+      plugins: {
+        legend: { position: 'right', labels: { boxWidth: 12, font: { size: 11 } } },
+        tooltip: { callbacks: { label: (c) => `${c.label}: ${fmtMoney(c.parsed)} (${Math.round(100 * c.parsed / total)}%)` } },
+      },
+    },
+  });
+}
+
 // ── CommonJS export guard (Node tests only; ignored in the browser) ──
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { budgetVsActual, dailyTotals, sankeyFlows };
+  module.exports = { budgetVsActual, dailyTotals, sankeyFlows, groupComposition };
 }
