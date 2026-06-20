@@ -47,3 +47,38 @@ test('dailyTotals sums outflows per day, in dollars, sorted ascending', () => {
 test('dailyTotals returns [] for empty input', () => {
   assert.deepStrictEqual(dailyTotals([]), []);
 });
+
+const { sankeyFlows } = require('../public/insights.js');
+
+test('sankeyFlows builds Spending→Group and Group→Category flows', () => {
+  const monthData = [
+    { categories: [
+      { name: 'Groceries', group: 'Food', amount: 300 },
+      { name: 'Dining',    group: 'Food', amount: 200 },
+      { name: 'Games',     group: 'Fun',  amount: 50  },
+    ] },
+    { categories: [
+      { name: 'Groceries', group: 'Food', amount: 100 },
+    ] },
+  ];
+  const flows = sankeyFlows(monthData);
+  // Spending → Food = 300+200+100 = 600
+  assert.deepStrictEqual(
+    flows.find(f => f.from === 'Spending' && f.to === 'Food'),
+    { from: 'Spending', to: 'Food', flow: 600 }
+  );
+  // Spending → Fun = 50
+  assert.deepStrictEqual(
+    flows.find(f => f.from === 'Spending' && f.to === 'Fun'),
+    { from: 'Spending', to: 'Fun', flow: 50 }
+  );
+  // Food → Groceries = 300+100 = 400
+  assert.deepStrictEqual(
+    flows.find(f => f.from === 'Food' && f.to === 'Groceries'),
+    { from: 'Food', to: 'Groceries', flow: 400 }
+  );
+});
+
+test('sankeyFlows returns [] when there is no spend', () => {
+  assert.deepStrictEqual(sankeyFlows([{ categories: [] }]), []);
+});

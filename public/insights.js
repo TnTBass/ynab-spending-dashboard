@@ -38,7 +38,36 @@ function dailyTotals(txns) {
     .map(date => ({ date, amount: byDay[date] }));
 }
 
+// Build Sankey flows from monthData: a single "Spending" root → each group,
+// then each group → its categories. Amounts are summed across loaded months
+// (dollars). Output: [{from, to, flow}] with flow > 0.
+// Note: node identity in a Sankey is the label. Two categories with the same
+// name in different groups will merge into one node (acceptable); a category
+// named exactly "Spending" or sharing a group's name could create a cycle —
+// rare, revisit in polish if it surfaces.
+function sankeyFlows(monthData) {
+  const groupTotals = {};
+  const catTotals = {};
+  for (const m of monthData || []) {
+    for (const c of (m && m.categories) || []) {
+      groupTotals[c.group] = (groupTotals[c.group] || 0) + c.amount;
+      const key = c.group + ' ' + c.name;
+      const entry = catTotals[key] || (catTotals[key] = { group: c.group, cat: c.name, amount: 0 });
+      entry.amount += c.amount;
+    }
+  }
+  const flows = [];
+  for (const group of Object.keys(groupTotals)) {
+    if (groupTotals[group] > 0) flows.push({ from: 'Spending', to: group, flow: groupTotals[group] });
+  }
+  for (const key of Object.keys(catTotals)) {
+    const e = catTotals[key];
+    if (e.amount > 0) flows.push({ from: e.group, to: e.cat, flow: e.amount });
+  }
+  return flows;
+}
+
 // ── CommonJS export guard (Node tests only; ignored in the browser) ──
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { budgetVsActual, dailyTotals };
+  module.exports = { budgetVsActual, dailyTotals, sankeyFlows };
 }
