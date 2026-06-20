@@ -1,2 +1,8 @@
 .githooks/pre-commit text eol=lf
 scripts/*.mjs       text eol=lf
+
+# Docs are text — keep readable diffs (a stray NUL once tripped binary detection)
+*.md   text
+*.html text
+*.js   text
+*.json text
