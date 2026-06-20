@@ -93,6 +93,11 @@ async function renderInsights() {
   renderBurnRate();
   renderHistogram();
   renderFreqSize();
+  try { await loadScriptOnce('https://cdn.jsdelivr.net/npm/chartjs-chart-treemap@3'); renderTreemap(); }
+  catch (e) { showChartError('treemapEmpty', "Couldn't load the treemap library — check your connection."); }
+  renderGroupMix();
+  renderMovers();
+  renderRecurring();
 }
 
 // Re-render Insights charts if the screen is currently showing (e.g. after a
@@ -534,7 +539,176 @@ function renderFreqSize() {
   });
 }
 
+// ════════════ Wave 3: merchants & composition ════════════
+
+// Flat category+payee spend totals for the treemap. Output: [{category,payee,total}].
+function payeeTree(txns) {
+  const by = {};
+  for (const t of txns || []) {
+    if (!t || t.deleted || t.transfer_account_id) continue;
+    if (typeof t.amount !== 'number' || t.amount >= 0) continue;
+    const category = t.category_name || 'Uncategorized';
+    const payee = t.payee_name || '(no payee)';
+    const key = category + ' ' + payee;
+    const e = by[key] || (by[key] = { category, payee, total: 0 });
+    e.total += Math.abs(t.amount) / 1000;
+  }
+  return Object.values(by).map(e => ({ category: e.category, payee: e.payee, total: +e.total.toFixed(2) }));
+}
+
+// Each group's share (%) of monthly spend over the given months.
+// Output: { labels:[shortLabel], datasets:[{group, data:[pct per month]}] }.
+function groupMixShare(months) {
+  const ms = months || [];
+  const groups = [...new Set(ms.flatMap(m => Object.keys(m.groupTotals || {})))];
+  const labels = ms.map(m => m.shortLabel);
+  const datasets = groups.map(group => ({
+    group,
+    data: ms.map(m => {
+      const total = Object.values(m.groupTotals || {}).reduce((s, v) => s + v, 0);
+      return total > 0 ? +(100 * (m.groupTotals[group] || 0) / total).toFixed(2) : 0;
+    }),
+  }));
+  return { labels, datasets };
+}
+
+// Category spend change between the last two months in scope. Output (top 12 by
+// |delta|): [{category, prev, curr, delta}], delta>0 = spent more.
+function biggestMovers(months) {
+  if (!months || months.length < 2) return [];
+  const sum = (m) => {
+    const o = {};
+    for (const c of m.categories || []) o[c.name] = (o[c.name] || 0) + c.amount;
+    return o;
+  };
+  const a = sum(months[months.length - 2]);
+  const b = sum(months[months.length - 1]);
+  const names = new Set([...Object.keys(a), ...Object.keys(b)]);
+  return [...names]
+    .map(name => ({ category: name, prev: +(a[name] || 0).toFixed(2), curr: +(b[name] || 0).toFixed(2), delta: +((b[name] || 0) - (a[name] || 0)).toFixed(2) }))
+    .filter(r => r.delta !== 0)
+    .sort((x, y) => Math.abs(y.delta) - Math.abs(x.delta))
+    .slice(0, 12);
+}
+
+// Payees appearing in >=3 distinct calendar months — likely recurring/subscriptions.
+// Output: [{payee, months, total, avg}] sorted by months desc, then total desc.
+function detectRecurring(txns) {
+  const by = {};
+  for (const t of txns || []) {
+    if (!t || t.deleted || t.transfer_account_id) continue;
+    if (typeof t.amount !== 'number' || t.amount >= 0) continue;
+    const payee = t.payee_name;
+    if (!payee) continue;
+    const e = by[payee] || (by[payee] = { payee, months: new Set(), total: 0, count: 0 });
+    e.months.add(t.date.slice(0, 7));
+    e.total += Math.abs(t.amount) / 1000;
+    e.count++;
+  }
+  return Object.values(by)
+    .filter(e => e.months.size >= 3)
+    .map(e => ({ payee: e.payee, months: e.months.size, total: +e.total.toFixed(2), avg: +(e.total / e.count).toFixed(2) }))
+    .sort((a, b) => b.months - a.months || b.total - a.total);
+}
+
+// ── Payee treemap (chartjs-chart-treemap) ──
+function renderTreemap() {
+  const rows = payeeTree(insightsTxns);
+  const empty = document.getElementById('treemapEmpty');
+  if (!rows.length) { empty.style.display = 'block'; return; }
+  empty.style.display = 'none';
+  makeChart('treemapChart', {
+    type: 'treemap',
+    data: {
+      datasets: [{
+        tree: rows,
+        key: 'total',
+        groups: ['category', 'payee'],
+        spacing: 1,
+        borderWidth: 1,
+        borderColor: '#fff',
+        backgroundColor: (ctx) => {
+          if (ctx.type !== 'data') return 'transparent';
+          const node = ctx.raw._data;
+          const cat = (node && (node.category || (node.children && node.children[0] && node.children[0].category))) || '';
+          return groupColor(cat) + (ctx.raw.l === 0 ? '55' : 'cc');
+        },
+        labels: { display: true, color: '#fff', font: { size: 11 }, formatter: (ctx) => ctx.raw._data.payee || ctx.raw.g || '' },
+      }],
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { title: (i) => { const d = i[0].raw._data; return d.payee || d.category || ''; }, label: (i) => fmtMoney(i.raw.v) } },
+      },
+    },
+  });
+}
+
+// ── 100% stacked-area group mix (Yearly only) ──
+function renderGroupMix() {
+  const card = document.getElementById('mixCard');
+  if (insightsScope.mode === 'month') { card.style.display = 'none'; return; }
+  card.style.display = '';
+  const { labels, datasets } = groupMixShare(insightsMonths);
+  makeChart('mixChart', {
+    type: 'line',
+    data: {
+      labels,
+      datasets: datasets.map(d => ({
+        label: d.group, data: d.data,
+        borderColor: groupColor(d.group), backgroundColor: groupColor(d.group) + '99',
+        borderWidth: 1, fill: true, tension: 0.2, pointRadius: 0,
+      })),
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 10 } } }, tooltip: { callbacks: { label: (c) => `${c.dataset.label}: ${c.parsed.y}%` } } },
+      scales: { y: { stacked: true, min: 0, max: 100, ticks: { callback: (v) => v + '%' } }, x: { stacked: true } },
+    },
+  });
+}
+
+// ── Biggest-movers tornado (Yearly only) ──
+function renderMovers() {
+  const card = document.getElementById('moversCard');
+  if (insightsScope.mode === 'month') { card.style.display = 'none'; return; }
+  card.style.display = '';
+  const rows = biggestMovers(insightsMonths);
+  makeChart('moversChart', {
+    type: 'bar',
+    data: {
+      labels: rows.map(r => r.category),
+      datasets: [{
+        label: 'Change', data: rows.map(r => r.delta),
+        backgroundColor: rows.map(r => r.delta > 0 ? '#e53e3e' : '#48bb78'), borderWidth: 0,
+      }],
+    },
+    options: {
+      indexAxis: 'y', responsive: true,
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: (c) => (c.parsed.x > 0 ? '+' : '') + fmtMoney(c.parsed.x) } } },
+      scales: { x: { ticks: { callback: (v) => '$' + v } } },
+    },
+  });
+}
+
+// ── Recurring/subscription list (Yearly only; HTML table) ──
+function renderRecurring() {
+  const card = document.getElementById('recurringCard');
+  if (insightsScope.mode === 'month') { card.style.display = 'none'; return; }
+  card.style.display = '';
+  const rows = detectRecurring(insightsTxns);
+  const empty = document.getElementById('recurringEmpty');
+  const list = document.getElementById('recurringList');
+  if (!rows.length) { empty.style.display = 'block'; list.innerHTML = ''; return; }
+  empty.style.display = 'none';
+  list.innerHTML = '<table class="recurring-table"><thead><tr><th>Payee</th><th class="num">Months</th><th class="num">Avg</th><th class="num">Total</th></tr></thead><tbody>'
+    + rows.map(r => `<tr><td>${escapeHtml(r.payee)}</td><td class="num">${r.months}</td><td class="num">${fmtMoney(r.avg)}</td><td class="num">${fmtMoney(r.total)}</td></tr>`).join('')
+    + '</tbody></table>';
+}
+
 // ── CommonJS export guard (Node tests only; ignored in the browser) ──
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { budgetVsActual, dailyTotals, sankeyFlows, groupComposition, monthsForScope, dayOfWeekTotals, cumulativeByMonth, amountHistogram, freqSizeByCategory };
+  module.exports = { budgetVsActual, dailyTotals, sankeyFlows, groupComposition, monthsForScope, dayOfWeekTotals, cumulativeByMonth, amountHistogram, freqSizeByCategory, payeeTree, groupMixShare, biggestMovers, detectRecurring };
 }

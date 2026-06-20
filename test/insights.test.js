@@ -190,3 +190,92 @@ test('freqSizeByCategory labels missing category as Uncategorized', () => {
   const rows = freqSizeByCategory([{ date: '2026-06-01', amount: -5000 }]);
   assert.strictEqual(rows[0].label, 'Uncategorized');
 });
+
+// ════════════ Wave 3 ════════════
+const { payeeTree } = require('../public/insights.js');
+
+test('payeeTree aggregates outflow by category+payee', () => {
+  const txns = [
+    { date: '2026-06-01', amount: -10000, category_name: 'Food', payee_name: 'Store A' },
+    { date: '2026-06-02', amount: -5000,  category_name: 'Food', payee_name: 'Store A' },
+    { date: '2026-06-03', amount: -8000,  category_name: 'Food', payee_name: 'Store B' },
+    { date: '2026-06-04', amount: -2000,  category_name: 'Fun',  payee_name: 'Arcade' },
+    { date: '2026-06-05', amount: 9000,   category_name: 'Food', payee_name: 'Refund' },
+  ];
+  const rows = payeeTree(txns);
+  const a = rows.find(r => r.payee === 'Store A');
+  assert.deepStrictEqual(a, { category: 'Food', payee: 'Store A', total: 15 });
+  assert.strictEqual(rows.length, 3);
+});
+
+test('payeeTree labels missing payee/category', () => {
+  const rows = payeeTree([{ date: '2026-06-01', amount: -1000 }]);
+  assert.strictEqual(rows[0].category, 'Uncategorized');
+  assert.strictEqual(rows[0].payee, '(no payee)');
+});
+
+const { groupMixShare } = require('../public/insights.js');
+
+test('groupMixShare normalizes each month to 100% by group', () => {
+  const months = [
+    { shortLabel: 'Jan', groupTotals: { Food: 300, Fun: 100 } },
+    { shortLabel: 'Feb', groupTotals: { Food: 100, Fun: 100 } },
+  ];
+  const { labels, datasets } = groupMixShare(months);
+  assert.deepStrictEqual(labels, ['Jan', 'Feb']);
+  const food = datasets.find(d => d.group === 'Food');
+  assert.deepStrictEqual(food.data, [75, 50]);
+  const fun = datasets.find(d => d.group === 'Fun');
+  assert.deepStrictEqual(fun.data, [25, 50]);
+});
+
+test('groupMixShare yields no datasets for a zero-spend month', () => {
+  const { datasets } = groupMixShare([{ shortLabel: 'Jan', groupTotals: {} }]);
+  assert.deepStrictEqual(datasets, []);
+});
+
+const { biggestMovers } = require('../public/insights.js');
+
+test('biggestMovers compares the last two months by category', () => {
+  const months = [
+    { categories: [{ name: 'Groceries', amount: 100 }, { name: 'Gas', amount: 50 }] },
+    { categories: [{ name: 'Groceries', amount: 180 }, { name: 'Gas', amount: 20 }] },
+  ];
+  const rows = biggestMovers(months);
+  const groc = rows.find(r => r.category === 'Groceries');
+  assert.deepStrictEqual(groc, { category: 'Groceries', prev: 100, curr: 180, delta: 80 });
+  const gas = rows.find(r => r.category === 'Gas');
+  assert.strictEqual(gas.delta, -30);
+  assert.strictEqual(rows[0].category, 'Groceries');
+});
+
+test('biggestMovers needs at least two months', () => {
+  assert.deepStrictEqual(biggestMovers([{ categories: [] }]), []);
+});
+
+const { detectRecurring } = require('../public/insights.js');
+
+test('detectRecurring flags payees appearing in >=3 distinct months', () => {
+  const txns = [
+    { date: '2026-01-15', amount: -15990, payee_name: 'Streamy' },
+    { date: '2026-02-15', amount: -15990, payee_name: 'Streamy' },
+    { date: '2026-03-15', amount: -15990, payee_name: 'Streamy' },
+    { date: '2026-01-10', amount: -5000, payee_name: 'OneOff' },
+    { date: '2026-02-10', amount: -2000, payee_name: 'Twice' },
+    { date: '2026-03-10', amount: -2000, payee_name: 'Twice' },
+  ];
+  const rows = detectRecurring(txns);
+  assert.strictEqual(rows.length, 1);
+  assert.strictEqual(rows[0].payee, 'Streamy');
+  assert.strictEqual(rows[0].months, 3);
+  assert.strictEqual(rows[0].avg, 15.99);
+});
+
+test('detectRecurring ignores transactions without a payee', () => {
+  const rows = detectRecurring([
+    { date: '2026-01-01', amount: -1000 },
+    { date: '2026-02-01', amount: -1000 },
+    { date: '2026-03-01', amount: -1000 },
+  ]);
+  assert.deepStrictEqual(rows, []);
+});

@@ -365,6 +365,9 @@
     .insights-empty { color: #718096; font-size: 0.9rem; padding: 8px 0; }
     .heatmap-legend { display: flex; align-items: center; gap: 6px; justify-content: flex-end; margin-top: 8px; font-size: 0.72rem; color: #718096; }
     .heatmap-legend .sw { width: 12px; height: 12px; border-radius: 2px; }
+    .recurring-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+    .recurring-table th, .recurring-table td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #edf2f7; }
+    .recurring-table td.num, .recurring-table th.num { text-align: right; font-variant-numeric: tabular-nums; }
     .site-footer { padding: 24px 32px; max-width: 900px; margin: 0 auto; font-size: 0.72rem; color: #a0aec0; text-align: center; line-height: 1.5; }
     .site-footer a { color: #718096; text-decoration: underline; }
     .site-footer a:hover { color: #4299e1; }
@@ -741,6 +744,32 @@
         <div class="hint">Right = more often · Up = bigger average · Bubble = total spent</div>
         <div id="bubbleEmpty" class="insights-empty" style="display:none">No transactions in scope.</div>
         <canvas id="bubbleChart" height="220"></canvas>
+      </div>
+
+      <div class="card full">
+        <h2>🗺️ Where your money goes (treemap)</h2>
+        <div class="hint">Boxes sized by total spend, grouped by category then payee</div>
+        <div id="treemapEmpty" class="insights-empty" style="display:none">No transactions in scope.</div>
+        <canvas id="treemapChart" height="260"></canvas>
+      </div>
+
+      <div class="card full insights-yearly" id="mixCard">
+        <h2>🧬 Group mix over time (100%)</h2>
+        <div class="hint">Each band is a group's share of that month's spending</div>
+        <canvas id="mixChart" height="180"></canvas>
+      </div>
+
+      <div class="card insights-yearly" id="moversCard">
+        <h2>↕️ Biggest movers</h2>
+        <div class="hint">Category change: most recent month vs the prior month</div>
+        <canvas id="moversChart" height="200"></canvas>
+      </div>
+
+      <div class="card insights-yearly" id="recurringCard">
+        <h2>🔁 Likely recurring</h2>
+        <div class="hint">Payees seen in 3+ months in scope</div>
+        <div id="recurringEmpty" class="insights-empty" style="display:none">Nothing looks recurring in this scope.</div>
+        <div id="recurringList"></div>
       </div>
     </div>
   </div>
