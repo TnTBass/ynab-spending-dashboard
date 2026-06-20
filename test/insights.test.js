@@ -26,3 +26,24 @@ test('budgetVsActual aggregates budgeted and actual by group across months', () 
 test('budgetVsActual tolerates months without budgetRows', () => {
   assert.deepStrictEqual(budgetVsActual([{}, { budgetRows: [] }]), []);
 });
+
+const { dailyTotals } = require('../public/insights.js');
+
+test('dailyTotals sums outflows per day, in dollars, sorted ascending', () => {
+  const txns = [
+    { date: '2026-05-02', amount: -12000 },                 // $12 outflow
+    { date: '2026-05-02', amount: -3000 },                  // $3 outflow same day
+    { date: '2026-05-01', amount: -5000 },                  // $5 outflow
+    { date: '2026-05-03', amount:  9000 },                  // inflow → ignored
+    { date: '2026-05-03', amount: -1000, transfer_account_id: 'acc1' }, // transfer → ignored
+    { date: '2026-05-04', amount: -2000, deleted: true },   // deleted → ignored
+  ];
+  assert.deepStrictEqual(dailyTotals(txns), [
+    { date: '2026-05-01', amount: 5 },
+    { date: '2026-05-02', amount: 15 },
+  ]);
+});
+
+test('dailyTotals returns [] for empty input', () => {
+  assert.deepStrictEqual(dailyTotals([]), []);
+});

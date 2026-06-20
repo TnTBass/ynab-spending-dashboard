@@ -21,7 +21,24 @@ function budgetVsActual(monthData) {
     .sort((a, b) => b.actual - a.actual);
 }
 
+// Sum outflow spending per calendar day (dollars). Skips inflows, transfers,
+// and deleted rows. Uses parent transaction amounts (splits are not descended,
+// so totals are not double-counted). Input: array of raw YNAB transactions.
+// Output: [{date:'YYYY-MM-DD', amount}] sorted by date ascending.
+function dailyTotals(txns) {
+  const byDay = {};
+  for (const t of txns || []) {
+    if (!t || t.deleted) continue;
+    if (t.transfer_account_id) continue;
+    if (typeof t.amount !== 'number' || t.amount >= 0) continue;
+    byDay[t.date] = (byDay[t.date] || 0) + Math.abs(t.amount) / 1000;
+  }
+  return Object.keys(byDay)
+    .sort()
+    .map(date => ({ date, amount: byDay[date] }));
+}
+
 // ── CommonJS export guard (Node tests only; ignored in the browser) ──
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { budgetVsActual };
+  module.exports = { budgetVsActual, dailyTotals };
 }
