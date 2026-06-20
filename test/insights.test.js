@@ -98,3 +98,16 @@ test('groupComposition returns [] for a missing/empty month', () => {
   assert.deepStrictEqual(groupComposition(null), []);
   assert.deepStrictEqual(groupComposition({ groupTotals: {} }), []);
 });
+
+const { monthsForScope } = require('../public/insights.js');
+
+test('monthsForScope: year mode returns the 12 months of that year', () => {
+  const ms = monthsForScope({ mode: 'year', year: 2025 });
+  assert.strictEqual(ms.length, 12);
+  assert.strictEqual(ms[0], '2025-01-01');
+  assert.strictEqual(ms[11], '2025-12-01');
+});
+
+test('monthsForScope: month mode returns the single month', () => {
+  assert.deepStrictEqual(monthsForScope({ mode: 'month', year: 2026, month: 6 }), ['2026-06-01']);
+});

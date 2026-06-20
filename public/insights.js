@@ -23,31 +23,79 @@ function showChartError(emptyId, msg) {
   if (el) { el.textContent = msg; el.style.display = 'block'; }
 }
 
+// ── Insights scope (independent of the dashboard period selector) ──
+let insightsScope = { mode: 'year', year: new Date().getFullYear(), month: new Date().getMonth() + 1 };
+let insightsMonths = [];   // processed months for the current scope
+let insightsTxns = [];     // raw transactions within the current scope
+
+// Which calendar years to offer in the year picker: from the budget's earliest
+// loaded month to the current year (fallback to current year only).
+function insightsYearOptions() {
+  const years = new Set([new Date().getFullYear()]);
+  for (const m of monthData || []) { const y = +m.month.slice(0, 4); if (y) years.add(y); }
+  return [...years].sort((a, b) => b - a);
+}
+
+// Populate the year/month <select>s from current state.
+function populateScopePickers() {
+  const ySel = document.getElementById('scopeYear');
+  ySel.innerHTML = insightsYearOptions().map(y => `<option value="${y}">${y}</option>`).join('');
+  ySel.value = String(insightsScope.year);
+  const mSel = document.getElementById('scopeMonth');
+  const names = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  mSel.innerHTML = names.map((n, i) => `<option value="${i + 1}">${n} ${insightsScope.year}</option>`).join('');
+  mSel.value = String(insightsScope.month);
+  mSel.style.display = insightsScope.mode === 'month' ? '' : 'none';
+}
+
+// Fetch + cache the scoped months' details and the scoped transactions, then
+// re-render. Uses the existing fetchMonthDetail / fetchAllTransactions helpers.
+async function loadInsightsData() {
+  const months = monthsForScope(insightsScope);
+  const details = await Promise.all(months.map(m => fetchMonthDetail(m, { quiet: true })));
+  insightsMonths = months.map((m, i) => details[i]
+    ? processMonth(details[i], m)
+    : { month: m, label: fmtMonth(m), shortLabel: fmtMonth(m, true), total: 0, categories: [], groupTotals: {}, budgetRows: [] });
+  const since = months[0];
+  const before = nextYNABMonth(months[months.length - 1]);
+  const data = await fetchAllTransactions(since, 0, { quiet: true });
+  insightsTxns = (data.transactions || []).filter(t => !t.deleted && t.date >= since && t.date < before);
+}
+
+function setInsightsMode(mode) {
+  insightsScope.mode = mode;
+  document.getElementById('scopeYearBtn').classList.toggle('active', mode === 'year');
+  document.getElementById('scopeMonthBtn').classList.toggle('active', mode === 'month');
+  document.getElementById('scopeMonth').style.display = mode === 'month' ? '' : 'none';
+  renderInsights();
+}
+function onScopeYearChange() { insightsScope.year = +document.getElementById('scopeYear').value; populateScopePickers(); renderInsights(); }
+function onScopeMonthChange() { insightsScope.month = +document.getElementById('scopeMonth').value; renderInsights(); }
+
 async function openInsights() {
   if (!activeBudget || !Array.isArray(monthData) || !monthData.length) return;
   showScreen('insights');
-  renderBudgetVsActual();
-  try {
-    await loadScriptOnce('https://cdn.jsdelivr.net/npm/chartjs-chart-matrix@2');
-    renderHeatmap();
-  } catch (e) {
-    showChartError('heatmapEmpty', 'Couldn’t load the heatmap library — check your connection.');
-  }
-  try {
-    await loadScriptOnce('https://cdn.jsdelivr.net/npm/chartjs-chart-sankey@0.12.0');
-    renderSankey();
-  } catch (e) {
-    showChartError('sankeyEmpty', 'Couldn’t load the flow-diagram library — check your connection.');
-  }
+  populateScopePickers();
+  await renderInsights();
 }
 function closeInsights() { showScreen('dashboard'); }
+
+// Load scoped data, then (re)draw every Insights chart for the current scope.
+async function renderInsights() {
+  await loadInsightsData();
+  renderBudgetVsActual();
+  try { await loadScriptOnce('https://cdn.jsdelivr.net/npm/chartjs-chart-matrix@2'); renderHeatmap(); }
+  catch (e) { showChartError('heatmapEmpty', "Couldn't load the heatmap library — check your connection."); }
+  try { await loadScriptOnce('https://cdn.jsdelivr.net/npm/chartjs-chart-sankey@0.12.0'); renderSankey(); }
+  catch (e) { showChartError('sankeyEmpty', "Couldn't load the flow-diagram library — check your connection."); }
+}
 
 // Re-render Insights charts if the screen is currently showing (e.g. after a
 // period or budget change refreshes monthData/txIndex). Safe to call anytime.
 function refreshInsightsIfOpen() {
   const ins = document.getElementById('insights');
   if (!ins || getComputedStyle(ins).display === 'none') return;
-  openInsights();
+  renderInsights();
 }
 
 // ── Pure data-shapers ───────────────────────────────────────────
@@ -275,7 +323,18 @@ function renderGroupDonut() {
   });
 }
 
+// Expand an Insights scope into the YNAB month-start strings it covers.
+// scope = { mode:'year', year } | { mode:'month', year, month(1-12) }
+function monthsForScope(scope) {
+  if (scope.mode === 'month') {
+    return [`${scope.year}-${String(scope.month).padStart(2, '0')}-01`];
+  }
+  const out = [];
+  for (let m = 1; m <= 12; m++) out.push(`${scope.year}-${String(m).padStart(2, '0')}-01`);
+  return out;
+}
+
 // ── CommonJS export guard (Node tests only; ignored in the browser) ──
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { budgetVsActual, dailyTotals, sankeyFlows, groupComposition };
+  module.exports = { budgetVsActual, dailyTotals, sankeyFlows, groupComposition, monthsForScope };
 }

@@ -165,6 +165,9 @@
     .top-actions .toggle-row input { cursor: pointer; }
     .btn-secondary { padding: 7px 14px; border: 1.5px solid #e2e8f0; border-radius: 8px; font-size: 0.85rem; background: white; cursor: pointer; color: #4a5568; transition: all 0.15s; }
     .btn-secondary:hover { border-color: #4299e1; color: #4299e1; }
+    .scope-toggle { display: inline-flex; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; }
+    .scope-btn { border: none; background: #fff; color: #4a5568; padding: 6px 14px; cursor: pointer; font-size: 0.85rem; }
+    .scope-btn.active { background: #4299e1; color: #fff; }
 
     .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
     .card { background: white; border-radius: 12px; padding: 24px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
@@ -682,6 +685,12 @@
         <p class="subtitle">Deeper views of your spending</p>
       </div>
       <div class="top-actions no-capture">
+        <div class="scope-toggle">
+          <button id="scopeYearBtn" class="scope-btn active" onclick="setInsightsMode('year')">Yearly</button>
+          <button id="scopeMonthBtn" class="scope-btn" onclick="setInsightsMode('month')">Monthly</button>
+        </div>
+        <select id="scopeYear" onchange="onScopeYearChange()"></select>
+        <select id="scopeMonth" onchange="onScopeMonthChange()" style="display:none"></select>
         <button class="btn-secondary" onclick="closeInsights()">← Back</button>
       </div>
     </div>
