@@ -166,7 +166,7 @@ function sankeyFlows(monthData) {
 
 // ── Budget vs. Actual (native Chart.js bar; budgeted shown as markers) ──
 function renderBudgetVsActual() {
-  const rows = budgetVsActual(monthData);
+  const rows = budgetVsActual(insightsMonths);
   const empty = document.getElementById('bvaEmpty');
   if (!rows.length) { empty.style.display = 'block'; return; }
   empty.style.display = 'none';
@@ -273,7 +273,7 @@ function groupComposition(month) {
 
 // ── Spending flow Sankey (chartjs-chart-sankey) ──
 function renderSankey() {
-  const flows = sankeyFlows(monthData);
+  const flows = sankeyFlows(insightsMonths);
   const empty = document.getElementById('sankeyEmpty');
   if (!flows.length) { empty.style.display = 'block'; return; }
   empty.style.display = 'none';
