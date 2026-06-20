@@ -1225,8 +1225,18 @@
         total += amount;
       }
       categories.sort((a, b) => b.amount - a.amount);
+      const budgetRows = [];
+      for (const cat of detail.categories ?? []) {
+        if (isSkippedGroup(cat.category_group_name) || cat.deleted) continue;
+        budgetRows.push({
+          group: cat.category_group_name,
+          name: cat.name,
+          budgeted: (cat.budgeted || 0) / 1000,
+          actual: cat.activity < 0 ? Math.abs(cat.activity) / 1000 : 0,
+        });
+      }
       const partial = isCurrentMonth(monthStr);
-      return { month: monthStr, label: fmtMonth(monthStr)+(partial?' *':''), shortLabel: fmtMonth(monthStr,true)+(partial?'*':''), total, categories, groupTotals };
+      return { month: monthStr, label: fmtMonth(monthStr)+(partial?' *':''), shortLabel: fmtMonth(monthStr,true)+(partial?'*':''), total, categories, groupTotals, budgetRows };
     }
 
     function datesForPeriod(period) {
@@ -1241,7 +1251,7 @@
       if (spinner && !allCached(dates)) showLoading(`Fetching ${dates.length} months…`);
       const details = await Promise.all(dates.map(m => fetchMonthDetail(m, { quiet })));
       monthData = dates.map((m, i) => details[i] ? processMonth(details[i], m)
-        : { month: m, label: fmtMonth(m), shortLabel: fmtMonth(m,true), total:0, categories:[], groupTotals:{} });
+        : { month: m, label: fmtMonth(m), shortLabel: fmtMonth(m,true), total:0, categories:[], groupTotals:{}, budgetRows:[] });
       hiddenCategoryIds = new Set(
         details.flatMap(d => d?.categories ?? [])
                .filter(c => c.category_group_name === 'Hidden Categories')

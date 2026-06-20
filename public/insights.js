@@ -3,7 +3,31 @@
  * render code is verified in the preview. No code runs at load time except
  * function declarations and the export guard at the bottom. */
 
-function openInsights() { showScreen('insights'); }
+// ── Lazy <script> loader (one fetch per src, resolves when ready) ──
+const _loadedScripts = {};
+function loadScriptOnce(src) {
+  if (_loadedScripts[src]) return _loadedScripts[src];
+  _loadedScripts[src] = new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = src;
+    s.async = true;
+    s.onload = () => resolve();
+    s.onerror = () => reject(new Error('Failed to load ' + src));
+    document.head.appendChild(s);
+  });
+  return _loadedScripts[src];
+}
+
+function showChartError(emptyId, msg) {
+  const el = document.getElementById(emptyId);
+  if (el) { el.textContent = msg; el.style.display = 'block'; }
+}
+
+async function openInsights() {
+  if (!activeBudget || !Array.isArray(monthData) || !monthData.length) return;
+  showScreen('insights');
+  renderBudgetVsActual();
+}
 function closeInsights() { showScreen('dashboard'); }
 
 // ── Pure data-shapers ───────────────────────────────────────────
@@ -68,6 +92,47 @@ function sankeyFlows(monthData) {
     if (e.amount > 0) flows.push({ from: e.group, to: e.cat, flow: e.amount });
   }
   return flows;
+}
+
+// ── Budget vs. Actual (native Chart.js bar; budgeted shown as markers) ──
+function renderBudgetVsActual() {
+  const rows = budgetVsActual(monthData);
+  const empty = document.getElementById('bvaEmpty');
+  if (!rows.length) { empty.style.display = 'block'; return; }
+  empty.style.display = 'none';
+  makeChart('bvaChart', {
+    type: 'bar',
+    data: {
+      labels: rows.map(r => r.name),
+      datasets: [
+        {
+          label: 'Actual',
+          data: rows.map(r => r.actual),
+          backgroundColor: rows.map(r => r.actual > r.budgeted ? '#e53e3e' : '#48bb78'),
+          order: 2,
+        },
+        {
+          label: 'Budgeted',
+          type: 'scatter',
+          data: rows.map((r, i) => ({ x: r.budgeted, y: i })),
+          backgroundColor: '#2d3748',
+          pointStyle: 'rectRot',
+          pointRadius: 7,
+          pointHoverRadius: 8,
+          order: 1,
+        },
+      ],
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true,
+      plugins: {
+        legend: { position: 'top' },
+        tooltip: { callbacks: { label: (c) => `${c.dataset.label}: $${Number(c.parsed.x).toFixed(2)}` } },
+      },
+      scales: { x: { beginAtZero: true, ticks: { callback: (v) => '$' + v } } },
+    },
+  });
 }
 
 // ── CommonJS export guard (Node tests only; ignored in the browser) ──
