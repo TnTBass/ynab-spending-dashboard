@@ -27,6 +27,12 @@ async function openInsights() {
   if (!activeBudget || !Array.isArray(monthData) || !monthData.length) return;
   showScreen('insights');
   renderBudgetVsActual();
+  try {
+    await loadScriptOnce('https://cdn.jsdelivr.net/npm/chartjs-chart-matrix@2');
+    renderHeatmap();
+  } catch (e) {
+    showChartError('heatmapEmpty', 'Couldn’t load the heatmap library — check your connection.');
+  }
 }
 function closeInsights() { showScreen('dashboard'); }
 
@@ -131,6 +137,62 @@ function renderBudgetVsActual() {
         tooltip: { callbacks: { label: (c) => `${c.dataset.label}: $${Number(c.parsed.x).toFixed(2)}` } },
       },
       scales: { x: { beginAtZero: true, ticks: { callback: (v) => '$' + v } } },
+    },
+  });
+}
+
+// ── Daily-spend calendar heatmap (chartjs-chart-matrix) ──
+function renderHeatmap() {
+  const totals = dailyTotals([...txIndex.values()]);
+  const empty = document.getElementById('heatmapEmpty');
+  if (!totals.length) { empty.style.display = 'block'; return; }
+  empty.style.display = 'none';
+
+  const map = {};
+  let max = 0;
+  for (const d of totals) { map[d.date] = d.amount; if (d.amount > max) max = d.amount; }
+
+  const start = new Date(totals[0].date + 'T12:00:00Z');
+  const end = new Date(totals[totals.length - 1].date + 'T12:00:00Z');
+  const cells = [];
+  for (let dt = new Date(start); dt <= end; dt.setUTCDate(dt.getUTCDate() + 1)) {
+    const iso = dt.toISOString().slice(0, 10);
+    const week = Math.floor((dt - start) / (7 * 864e5));
+    cells.push({ x: week, y: dt.getUTCDay(), d: iso, v: map[iso] || 0 });
+  }
+  const weeks = cells.length ? cells[cells.length - 1].x + 1 : 1;
+  const dayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+  makeChart('heatmapChart', {
+    type: 'matrix',
+    data: {
+      datasets: [{
+        label: 'Daily spend',
+        data: cells,
+        width: (c) => Math.max(2, ((c.chart.chartArea || {}).width || 0) / weeks - 2),
+        height: (c) => Math.max(2, ((c.chart.chartArea || {}).height || 0) / 7 - 2),
+        backgroundColor: (c) => {
+          const v = c.raw.v;
+          if (!v) return '#ebedf0';
+          return `rgba(66,153,225,${0.15 + 0.85 * (v / max)})`;
+        },
+        borderWidth: 0,
+      }],
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { title: (i) => i[0].raw.d, label: (i) => '$' + i.raw.v.toFixed(2) } },
+      },
+      scales: {
+        x: { display: false, type: 'linear', offset: true, min: 0, max: weeks },
+        y: {
+          type: 'linear', offset: true, min: -0.5, max: 6.5, reverse: true,
+          ticks: { stepSize: 1, callback: (v) => dayLabels[v] || '' },
+          grid: { display: false },
+        },
+      },
     },
   });
 }
