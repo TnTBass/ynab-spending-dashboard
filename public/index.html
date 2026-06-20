@@ -1663,8 +1663,8 @@
 
     // ── Screens ──────────────────────────────────────────────
     function showScreen(id) {
-      const blockScreens = new Set(['dashboard', 'searchScreen']);
-      ['setupScreen','loadingScreen','budgetScreen','dashboard','searchScreen'].forEach(s =>
+      const blockScreens = new Set(['dashboard', 'searchScreen', 'insights']);
+      ['setupScreen','loadingScreen','budgetScreen','dashboard','searchScreen','insights'].forEach(s =>
         document.getElementById(s).style.display = s===id ? (blockScreens.has(id)?'block':'flex') : 'none');
     }
     function showSetup() { clearTokens(); localStorage.removeItem('ynab_budget'); showScreen('setupScreen'); }
