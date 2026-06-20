@@ -538,12 +538,6 @@
         <canvas id="totalChart" height="70"></canvas>
       </div>
 
-      <div class="card full">
-        <h2>Spending by Group</h2>
-        <div class="hint">Click a data point to drill down by month</div>
-        <canvas id="groupChart" height="70"></canvas>
-      </div>
-
       <div class="card">
         <div class="card-title-row">
           <h2>Top Categories</h2>
@@ -563,13 +557,6 @@
         <canvas id="groupDonutChart" height="160"></canvas>
       </div>
 
-      <div class="card">
-        <h2>Group Trend</h2>
-        <div class="hint">
-          Showing:&nbsp;<select id="groupTrendSelect" onchange="renderGroupTrendChart()" style="border:none;background:transparent;color:#a0aec0;font-size:0.75rem;cursor:pointer"></select>
-        </div>
-        <canvas id="groupTrendChart" height="160"></canvas>
-      </div>
     </div>
   </div>
 
@@ -717,6 +704,17 @@
         <div id="sankeyEmpty" class="insights-empty" style="display:none">No spending to chart for this period.</div>
         <canvas id="sankeyChart" height="320"></canvas>
       </div>
+
+      <div class="card full insights-trend" id="groupTrendCard">
+        <h2>📈 Group Trend</h2>
+        <div class="hint" id="insightsTrendHint">Monthly spend by group across the year</div>
+        <canvas id="insightsGroupTrend" height="160"></canvas>
+      </div>
+      <div class="card full insights-trend" id="groupStackCard">
+        <h2>📊 Spending by Group (stacked)</h2>
+        <canvas id="insightsGroupStack" height="160"></canvas>
+      </div>
+      <div id="trendMonthlyHint" class="insights-empty" style="display:none">Switch to <strong>Yearly</strong> to see month-over-month trends.</div>
     </div>
   </div>
 
@@ -2082,8 +2080,8 @@
       document.getElementById('periodLabel').textContent =
         sel.options[sel.selectedIndex].text + (monthData.some(m=>m.label.includes('*')) ? '  ·  * partial month' : '');
       topCatMonthIdx = monthData.length - 1;
-      renderStatCards(); renderTotalChart(); renderGroupChart();
-      renderTopCatBar(); renderGroupTrendSelect(); renderGroupTrendChart();
+      renderStatCards(); renderTotalChart();
+      renderTopCatBar();
       renderGroupDonut();
       const insightsBtn = document.getElementById('dashInsightsBtn');
       if (insightsBtn) { insightsBtn.disabled = false; insightsBtn.title = 'Explore charts & insights'; }

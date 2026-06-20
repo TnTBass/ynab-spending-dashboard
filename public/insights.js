@@ -88,6 +88,7 @@ async function renderInsights() {
   catch (e) { showChartError('heatmapEmpty', "Couldn't load the heatmap library — check your connection."); }
   try { await loadScriptOnce('https://cdn.jsdelivr.net/npm/chartjs-chart-sankey@0.12.0'); renderSankey(); }
   catch (e) { showChartError('sankeyEmpty', "Couldn't load the flow-diagram library — check your connection."); }
+  renderInsightsTrends();
 }
 
 // Re-render Insights charts if the screen is currently showing (e.g. after a
@@ -278,6 +279,36 @@ function renderHeatmap() {
     const stops = [0, 0.25, 0.5, 0.75, 1].map(t => heatColor(t * max || (t === 0 ? 0 : 1), max));
     legend.innerHTML = '<span>Less</span>' + stops.map(c => `<span class="sw" style="background:${c}"></span>`).join('') + '<span>More</span>';
   }
+}
+
+// Month-over-month group charts for the Insights Yearly view. Hidden in Monthly.
+function renderInsightsTrends() {
+  const monthly = insightsScope.mode === 'month';
+  const trendCard = document.getElementById('groupTrendCard');
+  const stackCard = document.getElementById('groupStackCard');
+  const hint = document.getElementById('trendMonthlyHint');
+  trendCard.style.display = monthly ? 'none' : '';
+  stackCard.style.display = monthly ? 'none' : '';
+  hint.style.display = monthly ? 'block' : 'none';
+  if (monthly) return;
+
+  const labels = insightsMonths.map(m => m.shortLabel);
+  const groups = [...new Set(insightsMonths.flatMap(m => Object.keys(m.groupTotals)))];
+  const datasets = groups.map(g => ({
+    label: g, data: insightsMonths.map(m => m.groupTotals[g] || 0),
+    borderColor: groupColor(g), backgroundColor: groupColor(g),
+  }));
+
+  makeChart('insightsGroupTrend', {
+    type: 'line',
+    data: { labels, datasets: datasets.map(d => ({ ...d, fill: false, tension: 0.3, borderWidth: 2, pointRadius: 3 })) },
+    options: { responsive: true, plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 10 } } } }, scales: { y: { beginAtZero: true, ticks: { callback: (v) => '$' + v } } } },
+  });
+  makeChart('insightsGroupStack', {
+    type: 'bar',
+    data: { labels, datasets: datasets.map(d => ({ ...d, borderWidth: 0 })) },
+    options: { responsive: true, plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 10 } } } }, scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true, ticks: { callback: (v) => '$' + v } } } },
+  });
 }
 
 // Spending composition by group for a single processed month. Input: one
