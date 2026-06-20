@@ -20,3 +20,6 @@ Thumbs.db
 # Wrangler
 .wrangler/
 node_modules/
+
+# Superpowers brainstorm mockups
+.superpowers/
