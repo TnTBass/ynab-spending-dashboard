@@ -359,6 +359,7 @@
     /* (class applied to button rows so they don't appear in the PDF) */
 
     /* ── Footer ─────────────────────────────────────────── */
+    .insights-empty { color: #718096; font-size: 0.9rem; padding: 8px 0; }
     .site-footer { padding: 24px 32px; max-width: 900px; margin: 0 auto; font-size: 0.72rem; color: #a0aec0; text-align: center; line-height: 1.5; }
     .site-footer a { color: #718096; text-decoration: underline; }
     .site-footer a:hover { color: #4299e1; }
@@ -513,6 +514,7 @@
           Show hidden
         </label>
         <button id="dashSearchBtn" class="btn-secondary" onclick="openSearch()" disabled title="Indexing transactions…">🔎 Search</button>
+        <button id="dashInsightsBtn" class="btn-secondary" onclick="openInsights()">📊 Insights</button>
         <button class="btn-secondary" onclick="refreshData()">↻ Refresh</button>
         <span id="refreshStatus" style="font-size:0.78rem;color:#a0aec0;min-width:80px"></span>
         <button id="dashCsvBtn" class="btn-secondary" onclick="downloadCSV()">⬇ CSV</button>
@@ -663,6 +665,39 @@
       <main class="search-results" id="searchResults">
         <p class="search-empty">Loading…</p>
       </main>
+    </div>
+  </div>
+
+  <!-- ── Insights ─────────────────────────────────────────── -->
+  <div id="insights" style="display:none">
+    <div class="top-bar">
+      <div>
+        <h1>Insights</h1>
+        <p class="subtitle">Deeper views of your spending</p>
+      </div>
+      <div class="top-actions no-capture">
+        <button class="btn-secondary" onclick="closeInsights()">← Back</button>
+      </div>
+    </div>
+
+    <div class="grid" style="padding:0 32px 32px">
+      <div class="card full">
+        <h2>💸 Budget vs. Actual</h2>
+        <div id="bvaEmpty" class="insights-empty" style="display:none">No budget data for this period.</div>
+        <canvas id="bvaChart" height="220"></canvas>
+      </div>
+
+      <div class="card full">
+        <h2>📅 Daily spending heatmap</h2>
+        <div id="heatmapEmpty" class="insights-empty" style="display:none">No transactions for this period.</div>
+        <canvas id="heatmapChart" height="160"></canvas>
+      </div>
+
+      <div class="card full">
+        <h2>🔀 Spending flow</h2>
+        <div id="sankeyEmpty" class="insights-empty" style="display:none">No spending to chart for this period.</div>
+        <canvas id="sankeyChart" height="320"></canvas>
+      </div>
     </div>
   </div>
 
@@ -2398,5 +2433,6 @@
       }
     })();
   </script>
+  <script src="insights.js"></script>
 </body>
 </html>

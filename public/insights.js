@@ -3,6 +3,9 @@
  * render code is verified in the preview. No code runs at load time except
  * function declarations and the export guard at the bottom. */
 
+function openInsights() { showScreen('insights'); }
+function closeInsights() { showScreen('dashboard'); }
+
 // ── Pure data-shapers ───────────────────────────────────────────
 // Aggregate budgeted vs actual spend by category group across all loaded months.
 // Input: monthData where each month may carry budgetRows:[{group,name,budgeted,actual}]
