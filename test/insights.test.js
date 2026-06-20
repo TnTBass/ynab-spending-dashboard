@@ -111,3 +111,82 @@ test('monthsForScope: year mode returns the 12 months of that year', () => {
 test('monthsForScope: month mode returns the single month', () => {
   assert.deepStrictEqual(monthsForScope({ mode: 'month', year: 2026, month: 6 }), ['2026-06-01']);
 });
+
+// ════════════ Wave 2 ════════════
+const { dayOfWeekTotals } = require('../public/insights.js');
+
+test('dayOfWeekTotals buckets outflow dollars by weekday (Sun=0)', () => {
+  // 2026-06-07 is a Sunday; 2026-06-08 a Monday.
+  const txns = [
+    { date: '2026-06-07', amount: -10000 },
+    { date: '2026-06-07', amount: -5000 },
+    { date: '2026-06-08', amount: -2000 },
+    { date: '2026-06-08', amount: 9000 },
+    { date: '2026-06-08', amount: -1000, transfer_account_id: 'a' },
+  ];
+  const out = dayOfWeekTotals(txns);
+  assert.strictEqual(out.length, 7);
+  assert.strictEqual(out[0].total, 15);
+  assert.strictEqual(out[1].total, 2);
+  assert.strictEqual(out[2].total, 0);
+});
+
+const { cumulativeByMonth } = require('../public/insights.js');
+
+test('cumulativeByMonth returns per-month cumulative-by-day series', () => {
+  const txns = [
+    { date: '2026-06-02', amount: -10000 },
+    { date: '2026-06-05', amount: -5000 },
+    { date: '2026-04-10', amount: -4000 },
+  ];
+  const series = cumulativeByMonth(txns);
+  const june = series.find(s => s.label === '2026-06');
+  assert.strictEqual(june.data.length, 30);
+  assert.deepStrictEqual(june.data[0], { x: 1, y: 0 });
+  assert.deepStrictEqual(june.data[1], { x: 2, y: 10 });
+  assert.deepStrictEqual(june.data[4], { x: 5, y: 15 });
+  assert.deepStrictEqual(june.data[29], { x: 30, y: 15 });
+  assert.strictEqual(series[0].label, '2026-04');
+});
+
+const { amountHistogram } = require('../public/insights.js');
+
+test('amountHistogram bins outflow transaction sizes', () => {
+  const txns = [
+    { date: '2026-06-01', amount: -10000 },
+    { date: '2026-06-01', amount: -24999 },
+    { date: '2026-06-01', amount: -30000 },
+    { date: '2026-06-01', amount: -600000 },
+    { date: '2026-06-01', amount: 9000 },
+  ];
+  const bins = amountHistogram(txns);
+  assert.strictEqual(bins.length, 6);
+  assert.strictEqual(bins[0].label, '$0–25');
+  assert.strictEqual(bins[0].count, 2);
+  assert.strictEqual(bins[1].count, 1);
+  assert.strictEqual(bins[5].count, 1);
+});
+
+const { freqSizeByCategory } = require('../public/insights.js');
+
+test('freqSizeByCategory aggregates count, total, avg per category', () => {
+  const txns = [
+    { date: '2026-06-01', amount: -10000, category_name: 'Groceries' },
+    { date: '2026-06-02', amount: -20000, category_name: 'Groceries' },
+    { date: '2026-06-03', amount: -50000, category_name: 'Rent' },
+    { date: '2026-06-04', amount: -1000, category_name: 'Rent', transfer_account_id: 'a' },
+  ];
+  const rows = freqSizeByCategory(txns);
+  const groc = rows.find(r => r.label === 'Groceries');
+  assert.strictEqual(groc.count, 2);
+  assert.strictEqual(groc.total, 30);
+  assert.strictEqual(groc.avg, 15);
+  const rent = rows.find(r => r.label === 'Rent');
+  assert.strictEqual(rent.count, 1);
+  assert.strictEqual(rent.avg, 50);
+});
+
+test('freqSizeByCategory labels missing category as Uncategorized', () => {
+  const rows = freqSizeByCategory([{ date: '2026-06-01', amount: -5000 }]);
+  assert.strictEqual(rows[0].label, 'Uncategorized');
+});

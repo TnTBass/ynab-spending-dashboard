@@ -715,6 +715,33 @@
         <canvas id="insightsGroupStack" height="160"></canvas>
       </div>
       <div id="trendMonthlyHint" class="insights-empty" style="display:none">Switch to <strong>Yearly</strong> to see month-over-month trends.</div>
+
+      <div class="card">
+        <h2>📆 Spending by day of week</h2>
+        <div id="dowEmpty" class="insights-empty" style="display:none">No transactions in scope.</div>
+        <canvas id="dowChart" height="200"></canvas>
+      </div>
+
+      <div class="card">
+        <h2>🏃 Spending pace (cumulative by day)</h2>
+        <div class="hint">Each line is a month; steeper = faster spending</div>
+        <div id="burnEmpty" class="insights-empty" style="display:none">No transactions in scope.</div>
+        <canvas id="burnChart" height="200"></canvas>
+      </div>
+
+      <div class="card">
+        <h2>📊 Transaction sizes</h2>
+        <div class="hint">How many transactions fall in each dollar range</div>
+        <div id="histEmpty" class="insights-empty" style="display:none">No transactions in scope.</div>
+        <canvas id="histChart" height="200"></canvas>
+      </div>
+
+      <div class="card full">
+        <h2>🫧 Frequency vs. size by category</h2>
+        <div class="hint">Right = more often · Up = bigger average · Bubble = total spent</div>
+        <div id="bubbleEmpty" class="insights-empty" style="display:none">No transactions in scope.</div>
+        <canvas id="bubbleChart" height="220"></canvas>
+      </div>
     </div>
   </div>
 
