@@ -27,6 +27,7 @@ function showChartError(emptyId, msg) {
 let insightsScope = { mode: 'year', year: new Date().getFullYear(), month: new Date().getMonth() + 1 };
 let insightsMonths = [];   // processed months for the current scope
 let insightsTxns = [];     // raw transactions within the current scope
+let insightsSpend = [];    // split-flattened, spending-only rows (see spendingRows)
 
 // Which calendar years to offer in the year picker: from the budget's earliest
 // loaded month to the current year (fallback to current year only).
@@ -83,6 +84,7 @@ function closeInsights() { showScreen('dashboard'); }
 // Load scoped data, then (re)draw every Insights chart for the current scope.
 async function renderInsights() {
   await loadInsightsData();
+  insightsSpend = spendingRows(flattenTxnsForSearch(insightsTxns), validSpendingCategories(insightsMonths));
   renderBudgetVsActual();
   try { await loadScriptOnce('https://cdn.jsdelivr.net/npm/chartjs-chart-matrix@2'); renderHeatmap(); }
   catch (e) { showChartError('heatmapEmpty', "Couldn't load the heatmap library — check your connection."); }
@@ -185,30 +187,16 @@ function renderBudgetVsActual() {
     data: {
       labels: rows.map(r => r.name),
       datasets: [
-        {
-          label: 'Actual',
-          data: rows.map(r => r.actual),
-          backgroundColor: rows.map(r => r.actual > r.budgeted ? '#e53e3e' : '#48bb78'),
-          order: 2,
-        },
-        {
-          label: 'Budgeted',
-          type: 'scatter',
-          data: rows.map((r, i) => ({ x: r.budgeted, y: i })),
-          backgroundColor: '#2d3748',
-          pointStyle: 'rectRot',
-          pointRadius: 7,
-          pointHoverRadius: 8,
-          order: 1,
-        },
+        { label: 'Budgeted', data: rows.map(r => r.budgeted), backgroundColor: '#a0aec0', maxBarThickness: 18, borderRadius: 3 },
+        { label: 'Actual', data: rows.map(r => r.actual), backgroundColor: rows.map(r => r.actual > r.budgeted ? '#e53e3e' : '#48bb78'), maxBarThickness: 18, borderRadius: 3 },
       ],
     },
     options: {
       indexAxis: 'y',
-      responsive: true,
+      responsive: true, maintainAspectRatio: false,
       plugins: {
         legend: { position: 'top' },
-        tooltip: { callbacks: { label: (c) => `${c.dataset.label}: $${Number(c.parsed.x).toFixed(2)}` } },
+        tooltip: { callbacks: { label: (c) => `${c.dataset.label}: ${fmtMoney(c.parsed.x)}` } },
       },
       scales: { x: { beginAtZero: true, ticks: { callback: (v) => '$' + v } } },
     },
@@ -226,7 +214,7 @@ function heatColor(v, max) {
 }
 
 function renderHeatmap() {
-  const totals = dailyTotals(insightsTxns);
+  const totals = dailyTotals(insightsSpend);
   const empty = document.getElementById('heatmapEmpty');
   const subtitle = document.getElementById('heatmapSubtitle');
   const legend = document.getElementById('heatmapLegend');
@@ -267,10 +255,11 @@ function renderHeatmap() {
       width: (c) => Math.max(3, ((c.chart.chartArea || {}).width || 0) / weeks - 2),
       height: (c) => Math.max(3, ((c.chart.chartArea || {}).height || 0) / 7 - 2),
       backgroundColor: (c) => c.raw.v === null ? 'transparent' : heatColor(c.raw.v, max),
-      borderWidth: 0,
+      borderWidth: 1,
+      borderColor: '#fff',
     }]},
     options: {
-      responsive: true,
+      responsive: true, maintainAspectRatio: false,
       plugins: {
         legend: { display: false },
         tooltip: { filter: (i) => i.raw.v !== null, callbacks: { title: (i) => i[0].raw.d, label: (i) => fmtMoney(i.raw.v || 0) } },
@@ -311,12 +300,12 @@ function renderInsightsTrends() {
   makeChart('insightsGroupTrend', {
     type: 'line',
     data: { labels, datasets: datasets.map(d => ({ ...d, fill: false, tension: 0.3, borderWidth: 2, pointRadius: 3 })) },
-    options: { responsive: true, plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 10 } } } }, scales: { y: { beginAtZero: true, ticks: { callback: (v) => '$' + v } } } },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 10 } } } }, scales: { y: { beginAtZero: true, ticks: { callback: (v) => '$' + v } } } },
   });
   makeChart('insightsGroupStack', {
     type: 'bar',
     data: { labels, datasets: datasets.map(d => ({ ...d, borderWidth: 0 })) },
-    options: { responsive: true, plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 10 } } } }, scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true, ticks: { callback: (v) => '$' + v } } } },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 10 } } } }, scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true, ticks: { callback: (v) => '$' + v } } } },
   });
 }
 
@@ -342,13 +331,15 @@ function renderSankey() {
       datasets: [{
         label: 'Spending flow',
         data: flows.map(f => ({ from: f.from, to: f.to, flow: f.flow })),
-        colorMode: 'gradient',
-        color: '#4299e1',
+        colorMode: 'from',
+        colorFrom: () => '#90cdf4',
+        colorTo: () => '#90cdf4',
+        alpha: 0.45,
         borderWidth: 0,
       }],
     },
     options: {
-      responsive: true,
+      responsive: true, maintainAspectRatio: false,
       plugins: {
         legend: { display: false },
         tooltip: { callbacks: { label: (c) => `${c.raw.from} → ${c.raw.to}: $${Number(c.raw.flow).toFixed(0)}` } },
@@ -359,7 +350,7 @@ function renderSankey() {
 
 // ── Spending-by-group donut for the latest month (Overview) ──
 function renderGroupDonut() {
-  const month = monthData[monthData.length - 1];
+  const month = monthData[typeof topCatMonthIdx === 'number' ? topCatMonthIdx : monthData.length - 1];
   const rows = groupComposition(month);
   const labelEl = document.getElementById('groupDonutLabel');
   if (labelEl && month) labelEl.textContent = month.label.replace(' *', '');
@@ -372,7 +363,7 @@ function renderGroupDonut() {
       datasets: [{ data: rows.map(r => r.total), backgroundColor: rows.map(r => groupColor(r.group)), borderWidth: 2, borderColor: '#fff' }],
     },
     options: {
-      responsive: true,
+      responsive: true, maintainAspectRatio: false,
       cutout: '62%',
       plugins: {
         legend: { position: 'right', labels: { boxWidth: 12, font: { size: 11 } } },
@@ -464,7 +455,7 @@ function freqSizeByCategory(txns) {
 
 // ── Spending by day of week (radar) ──
 function renderDayOfWeek() {
-  const rows = dayOfWeekTotals(insightsTxns);
+  const rows = dayOfWeekTotals(insightsSpend);
   const empty = document.getElementById('dowEmpty');
   if (!rows.some(r => r.total > 0)) { empty.style.display = 'block'; return; }
   empty.style.display = 'none';
@@ -472,7 +463,7 @@ function renderDayOfWeek() {
   makeChart('dowChart', {
     type: 'radar',
     data: { labels, datasets: [{ label: 'Spending', data: rows.map(r => r.total), borderColor: '#4299e1', backgroundColor: 'rgba(66,153,225,0.18)', borderWidth: 2, pointBackgroundColor: '#4299e1' }] },
-    options: { responsive: true, plugins: { legend: { display: false }, tooltip: { callbacks: { label: (c) => fmtMoney(c.parsed.r) } } }, scales: { r: { beginAtZero: true, ticks: { callback: (v) => '$' + v } } } },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: (c) => fmtMoney(c.parsed.r) } } }, scales: { r: { beginAtZero: true, ticks: { callback: (v) => '$' + v } } } },
   });
 }
 
@@ -487,7 +478,7 @@ function renderBurnRate() {
     type: 'line',
     data: { datasets: series.map((s, i) => ({ label: s.label, data: s.data, borderColor: palette[i % palette.length], backgroundColor: palette[i % palette.length], borderWidth: 2, pointRadius: 0, tension: 0.15 })) },
     options: {
-      responsive: true, parsing: false,
+      responsive: true, maintainAspectRatio: false, parsing: false,
       plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 10 } } }, tooltip: { callbacks: { title: (i) => 'Day ' + i[0].parsed.x, label: (c) => `${c.dataset.label}: ${fmtMoney(c.parsed.y)}` } } },
       scales: { x: { type: 'linear', min: 1, max: 31, title: { display: true, text: 'Day of month' }, ticks: { stepSize: 5 } }, y: { beginAtZero: true, ticks: { callback: (v) => '$' + v } } },
     },
@@ -496,20 +487,20 @@ function renderBurnRate() {
 
 // ── Transaction-size histogram (bar) ──
 function renderHistogram() {
-  const bins = amountHistogram(insightsTxns);
+  const bins = amountHistogram(insightsSpend);
   const empty = document.getElementById('histEmpty');
   if (!bins.some(b => b.count > 0)) { empty.style.display = 'block'; return; }
   empty.style.display = 'none';
   makeChart('histChart', {
     type: 'bar',
-    data: { labels: bins.map(b => b.label), datasets: [{ label: 'Transactions', data: bins.map(b => b.count), backgroundColor: '#4299e1', borderWidth: 0 }] },
-    options: { responsive: true, plugins: { legend: { display: false }, tooltip: { callbacks: { label: (c) => `${c.parsed.y} transactions` } } }, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } },
+    data: { labels: bins.map(b => b.label), datasets: [{ label: 'Transactions', data: bins.map(b => b.count), borderWidth: 0, backgroundColor: ['#c6e0f5', '#90cdf4', '#63b3ed', '#4299e1', '#3182ce', '#2b6cb0'] }] },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: (c) => `${c.parsed.y} transactions` } } }, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } },
   });
 }
 
 // ── Frequency × size bubble (one bubble per category) ──
 function renderFreqSize() {
-  const rows = freqSizeByCategory(insightsTxns);
+  const rows = freqSizeByCategory(insightsSpend);
   const empty = document.getElementById('bubbleEmpty');
   if (!rows.length) { empty.style.display = 'block'; return; }
   empty.style.display = 'none';
@@ -526,9 +517,9 @@ function renderFreqSize() {
       })),
     },
     options: {
-      responsive: true,
+      responsive: true, maintainAspectRatio: false,
       plugins: {
-        legend: { display: false },
+        legend: { display: true, position: 'bottom', labels: { boxWidth: 10, font: { size: 9 } } },
         tooltip: { callbacks: { label: (c) => `${c.dataset.label}: ${c.raw.x}× · avg ${fmtMoney(c.raw.y)}` } },
       },
       scales: {
@@ -613,7 +604,7 @@ function detectRecurring(txns) {
 
 // ── Payee treemap (chartjs-chart-treemap) ──
 function renderTreemap() {
-  const rows = payeeTree(insightsTxns);
+  const rows = payeeTree(insightsSpend);
   const empty = document.getElementById('treemapEmpty');
   if (!rows.length) { empty.style.display = 'block'; return; }
   empty.style.display = 'none';
@@ -637,7 +628,7 @@ function renderTreemap() {
       }],
     },
     options: {
-      responsive: true,
+      responsive: true, maintainAspectRatio: false,
       plugins: {
         legend: { display: false },
         tooltip: { callbacks: { title: (i) => { const d = i[0].raw._data; return d.payee || d.category || ''; }, label: (i) => fmtMoney(i.raw.v) } },
@@ -651,21 +642,17 @@ function renderGroupMix() {
   const card = document.getElementById('mixCard');
   if (insightsScope.mode === 'month') { card.style.display = 'none'; return; }
   card.style.display = '';
-  const { labels, datasets } = groupMixShare(insightsMonths);
+  const { labels, datasets } = groupMixShare(monthsWithSpend(insightsMonths));
   makeChart('mixChart', {
-    type: 'line',
+    type: 'bar',
     data: {
       labels,
-      datasets: datasets.map(d => ({
-        label: d.group, data: d.data,
-        borderColor: groupColor(d.group), backgroundColor: groupColor(d.group) + '99',
-        borderWidth: 1, fill: true, tension: 0.2, pointRadius: 0,
-      })),
+      datasets: datasets.map(d => ({ label: d.group, data: d.data, backgroundColor: groupColor(d.group), borderWidth: 0 })),
     },
     options: {
-      responsive: true,
+      responsive: true, maintainAspectRatio: false,
       plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 10 } } }, tooltip: { callbacks: { label: (c) => `${c.dataset.label}: ${c.parsed.y}%` } } },
-      scales: { y: { stacked: true, min: 0, max: 100, ticks: { callback: (v) => v + '%' } }, x: { stacked: true } },
+      scales: { x: { stacked: true }, y: { stacked: true, min: 0, max: 100, ticks: { callback: (v) => v + '%' } } },
     },
   });
 }
@@ -675,18 +662,21 @@ function renderMovers() {
   const card = document.getElementById('moversCard');
   if (insightsScope.mode === 'month') { card.style.display = 'none'; return; }
   card.style.display = '';
-  const rows = biggestMovers(insightsMonths);
+  const rows = biggestMovers(monthsWithSpend(insightsMonths));
+  const empty = document.getElementById('moversEmpty');
+  if (rows.length === 0) { if (empty) empty.style.display = 'block'; makeChart('moversChart', { type: 'bar', data: { labels: [], datasets: [] } }); return; }
+  if (empty) empty.style.display = 'none';
   makeChart('moversChart', {
     type: 'bar',
     data: {
       labels: rows.map(r => r.category),
       datasets: [{
         label: 'Change', data: rows.map(r => r.delta),
-        backgroundColor: rows.map(r => r.delta > 0 ? '#e53e3e' : '#48bb78'), borderWidth: 0,
+        backgroundColor: rows.map(r => r.delta > 0 ? '#e53e3e' : '#48bb78'), borderWidth: 0, maxBarThickness: 22,
       }],
     },
     options: {
-      indexAxis: 'y', responsive: true,
+      indexAxis: 'y', responsive: true, maintainAspectRatio: false,
       plugins: { legend: { display: false }, tooltip: { callbacks: { label: (c) => (c.parsed.x > 0 ? '+' : '') + fmtMoney(c.parsed.x) } } },
       scales: { x: { ticks: { callback: (v) => '$' + v } } },
     },
@@ -698,7 +688,7 @@ function renderRecurring() {
   const card = document.getElementById('recurringCard');
   if (insightsScope.mode === 'month') { card.style.display = 'none'; return; }
   card.style.display = '';
-  const rows = detectRecurring(insightsTxns);
+  const rows = detectRecurring(insightsSpend);
   const empty = document.getElementById('recurringEmpty');
   const list = document.getElementById('recurringList');
   if (!rows.length) { empty.style.display = 'block'; list.innerHTML = ''; return; }
@@ -708,7 +698,36 @@ function renderRecurring() {
     + '</tbody></table>';
 }
 
+// ── Spending-only filtering (data correctness) ──────────────────
+
+// Set of category names that count as real spending — derived from the
+// already-filtered monthData/insightsMonths (YNAB category activity).
+function validSpendingCategories(months) {
+  const set = new Set();
+  for (const m of months || []) for (const c of m.categories || []) set.add(c.name);
+  return set;
+}
+
+// Keep only genuine spending rows: outflow, not a transfer, and in a real
+// spending category. Drops starting/opening balances, inflows, transfers,
+// and uncategorized. Input rows should already be split-flattened.
+function spendingRows(rows, validSet) {
+  const out = [];
+  for (const t of rows || []) {
+    if (!t || t.deleted || t.transfer_account_id) continue;
+    if (typeof t.amount !== 'number' || t.amount >= 0) continue;
+    if (!t.category_name || !validSet.has(t.category_name)) continue;
+    out.push(t);
+  }
+  return out;
+}
+
+// Months that actually have spending — drops empty/future months in the year.
+function monthsWithSpend(months) {
+  return (months || []).filter(m => (m.categories && m.categories.length) || m.total > 0);
+}
+
 // ── CommonJS export guard (Node tests only; ignored in the browser) ──
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { budgetVsActual, dailyTotals, sankeyFlows, groupComposition, monthsForScope, dayOfWeekTotals, cumulativeByMonth, amountHistogram, freqSizeByCategory, payeeTree, groupMixShare, biggestMovers, detectRecurring };
+  module.exports = { budgetVsActual, dailyTotals, sankeyFlows, groupComposition, monthsForScope, dayOfWeekTotals, cumulativeByMonth, amountHistogram, freqSizeByCategory, payeeTree, groupMixShare, biggestMovers, detectRecurring, validSpendingCategories, spendingRows, monthsWithSpend };
 }

@@ -368,6 +368,9 @@
     .recurring-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
     .recurring-table th, .recurring-table td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #edf2f7; }
     .recurring-table td.num, .recurring-table th.num { text-align: right; font-variant-numeric: tabular-nums; }
+    .chart-box { position: relative; height: 300px; }
+    .chart-box.tall { height: 380px; }
+    #insights, #dashboard, #searchScreen { padding-top: 24px; }
     .site-footer { padding: 24px 32px; max-width: 900px; margin: 0 auto; font-size: 0.72rem; color: #a0aec0; text-align: center; line-height: 1.5; }
     .site-footer a { color: #718096; text-decoration: underline; }
     .site-footer a:hover { color: #4299e1; }
@@ -557,7 +560,7 @@
       <div class="card">
         <h2>Spending by Group</h2>
         <div class="hint" id="groupDonutLabel">This month</div>
-        <canvas id="groupDonutChart" height="160"></canvas>
+        <div class="chart-box"><canvas id="groupDonutChart"></canvas></div>
       </div>
 
     </div>
@@ -691,85 +694,86 @@
       <div class="card full">
         <h2>💸 Budget vs. Actual</h2>
         <div id="bvaEmpty" class="insights-empty" style="display:none">No budget data for this period.</div>
-        <canvas id="bvaChart" height="220"></canvas>
+        <div class="chart-box tall"><canvas id="bvaChart"></canvas></div>
       </div>
 
       <div class="card full">
         <h2>📅 Daily spending heatmap</h2>
         <div class="hint" id="heatmapSubtitle">Daily spend</div>
         <div id="heatmapEmpty" class="insights-empty" style="display:none">No transactions for this period.</div>
-        <canvas id="heatmapChart" height="180"></canvas>
+        <div class="chart-box"><canvas id="heatmapChart"></canvas></div>
         <div id="heatmapLegend" class="heatmap-legend"></div>
       </div>
 
       <div class="card full">
         <h2>🔀 Spending flow</h2>
         <div id="sankeyEmpty" class="insights-empty" style="display:none">No spending to chart for this period.</div>
-        <canvas id="sankeyChart" height="320"></canvas>
+        <div class="chart-box tall"><canvas id="sankeyChart"></canvas></div>
       </div>
 
       <div class="card full insights-trend" id="groupTrendCard">
         <h2>📈 Group Trend</h2>
         <div class="hint" id="insightsTrendHint">Monthly spend by group across the year</div>
-        <canvas id="insightsGroupTrend" height="160"></canvas>
+        <div class="chart-box"><canvas id="insightsGroupTrend"></canvas></div>
       </div>
       <div class="card full insights-trend" id="groupStackCard">
         <h2>📊 Spending by Group (stacked)</h2>
-        <canvas id="insightsGroupStack" height="160"></canvas>
+        <div class="chart-box"><canvas id="insightsGroupStack"></canvas></div>
       </div>
       <div id="trendMonthlyHint" class="insights-empty" style="display:none">Switch to <strong>Yearly</strong> to see month-over-month trends.</div>
 
       <div class="card">
         <h2>📆 Spending by day of week</h2>
         <div id="dowEmpty" class="insights-empty" style="display:none">No transactions in scope.</div>
-        <canvas id="dowChart" height="200"></canvas>
+        <div class="chart-box"><canvas id="dowChart"></canvas></div>
       </div>
 
       <div class="card">
         <h2>🏃 Spending pace (cumulative by day)</h2>
         <div class="hint">Each line is a month; steeper = faster spending</div>
         <div id="burnEmpty" class="insights-empty" style="display:none">No transactions in scope.</div>
-        <canvas id="burnChart" height="200"></canvas>
+        <div class="chart-box"><canvas id="burnChart"></canvas></div>
       </div>
 
       <div class="card">
         <h2>📊 Transaction sizes</h2>
         <div class="hint">How many transactions fall in each dollar range</div>
         <div id="histEmpty" class="insights-empty" style="display:none">No transactions in scope.</div>
-        <canvas id="histChart" height="200"></canvas>
+        <div class="chart-box"><canvas id="histChart"></canvas></div>
       </div>
 
       <div class="card full">
         <h2>🫧 Frequency vs. size by category</h2>
         <div class="hint">Right = more often · Up = bigger average · Bubble = total spent</div>
         <div id="bubbleEmpty" class="insights-empty" style="display:none">No transactions in scope.</div>
-        <canvas id="bubbleChart" height="220"></canvas>
+        <div class="chart-box"><canvas id="bubbleChart"></canvas></div>
       </div>
 
       <div class="card full">
         <h2>🗺️ Where your money goes (treemap)</h2>
         <div class="hint">Boxes sized by total spend, grouped by category then payee</div>
         <div id="treemapEmpty" class="insights-empty" style="display:none">No transactions in scope.</div>
-        <canvas id="treemapChart" height="260"></canvas>
+        <div class="chart-box tall"><canvas id="treemapChart"></canvas></div>
       </div>
 
       <div class="card full insights-yearly" id="mixCard">
         <h2>🧬 Group mix over time (100%)</h2>
         <div class="hint">Each band is a group's share of that month's spending</div>
-        <canvas id="mixChart" height="180"></canvas>
+        <div class="chart-box"><canvas id="mixChart"></canvas></div>
       </div>
 
       <div class="card insights-yearly" id="moversCard">
         <h2>↕️ Biggest movers</h2>
         <div class="hint">Category change: most recent month vs the prior month</div>
-        <canvas id="moversChart" height="200"></canvas>
+        <div id="moversEmpty" class="insights-empty" style="display:none">Need at least two months of spending to compare.</div>
+        <div class="chart-box"><canvas id="moversChart"></canvas></div>
       </div>
 
       <div class="card insights-yearly" id="recurringCard">
         <h2>🔁 Likely recurring</h2>
         <div class="hint">Payees seen in 3+ months in scope</div>
         <div id="recurringEmpty" class="insights-empty" style="display:none">Nothing looks recurring in this scope.</div>
-        <div id="recurringList"></div>
+        <div id="recurringList" style="max-height:360px;overflow-y:auto"></div>
       </div>
     </div>
   </div>
@@ -2204,6 +2208,7 @@
     function topCatNav(dir) {
       topCatMonthIdx = Math.max(0, Math.min(monthData.length-1, topCatMonthIdx+dir));
       renderTopCatBar();
+      renderGroupDonut();
     }
 
     function renderGroupTrendSelect() {

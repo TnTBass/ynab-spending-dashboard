@@ -279,3 +279,40 @@ test('detectRecurring ignores transactions without a payee', () => {
   ]);
   assert.deepStrictEqual(rows, []);
 });
+
+// ════════════ Fixes/polish ════════════
+const { validSpendingCategories, spendingRows, monthsWithSpend } = require('../public/insights.js');
+
+test('validSpendingCategories collects category names from months', () => {
+  const months = [
+    { categories: [{ name: 'Groceries' }, { name: 'Mortgage' }] },
+    { categories: [{ name: 'Groceries' }, { name: 'Dining' }] },
+  ];
+  const set = validSpendingCategories(months);
+  assert.ok(set.has('Groceries') && set.has('Mortgage') && set.has('Dining'));
+  assert.strictEqual(set.size, 3);
+});
+
+test('spendingRows keeps only outflow rows in valid categories', () => {
+  const valid = new Set(['Groceries', 'Mortgage']);
+  const rows = [
+    { date: '2026-03-01', amount: -5000, category_name: 'Groceries' },
+    { date: '2026-03-02', amount: -233000000, category_name: 'Inflow: Ready to Assign' },
+    { date: '2026-03-03', amount: -100000, category_name: null },
+    { date: '2026-03-04', amount: 9000, category_name: 'Groceries' },
+    { date: '2026-03-05', amount: -7000, category_name: 'Mortgage', transfer_account_id: 'x' },
+  ];
+  const out = spendingRows(rows, valid);
+  assert.strictEqual(out.length, 1);
+  assert.strictEqual(out[0].category_name, 'Groceries');
+});
+
+test('monthsWithSpend drops months with no spending', () => {
+  const months = [
+    { shortLabel: '01', total: 1200, categories: [{ name: 'X', amount: 1200 }], groupTotals: { A: 1200 } },
+    { shortLabel: '02', total: 0, categories: [], groupTotals: {} },
+  ];
+  const out = monthsWithSpend(months);
+  assert.strictEqual(out.length, 1);
+  assert.strictEqual(out[0].shortLabel, '01');
+});
